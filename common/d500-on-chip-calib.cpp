@@ -70,7 +70,7 @@ namespace rs2
             });
 
             int count = 0;
-            while (!frame_arrived && count++ < 200)
+            while (!frame_arrived && count++ < 500)
             {
                 for (auto&& stream : _viewer.streams)
                 {
@@ -94,6 +94,9 @@ namespace rs2
         bool started = start_viewer(w, h, fps, invoke);
         if (!started)
         {
+            // start_viewer may have opened/started the sensor even if no frame arrived in time;
+            // stop it first so the retry's open() doesn't collide with an already-streaming sensor.
+            stop_viewer(invoke);
             std::this_thread::sleep_for(std::chrono::milliseconds(600));
             started = start_viewer(w, h, fps, invoke);
         }
