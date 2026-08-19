@@ -218,6 +218,9 @@ namespace rs2
                         _was_streaming = _sub->streaming;
                         try
                         {
+                            // Give FW's initial calibration-setup command burst time to settle before adding
+                            // host stream-open traffic on the same GMSL/I2C control channel.
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
                             try_start_viewer(1280, 720, 30, invoke);
                         }
                         catch (const std::exception & e)
