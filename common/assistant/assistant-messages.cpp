@@ -164,6 +164,7 @@ namespace rs2
 
                 if (!msg.streaming)
                 {
+                    ImGui::Dummy({ 0.f, 10.f });
                     ImGui::PushFont(win.get_font());
                     ImGui::PushStyleColor(ImGuiCol_Text, alpha(light_grey, 0.6f));
                     std::string footer = rsutils::string::from() << int(msg.latency_ms) << " ms";
@@ -217,6 +218,7 @@ namespace rs2
             }
         }
 
+        ImGui::Dummy({ 0.f, 10.f });
         ImGui::PopID();
     }
 }

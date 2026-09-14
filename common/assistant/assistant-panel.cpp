@@ -118,11 +118,13 @@ namespace rs2
         ImGui::Separator();
 
         const float input_row_h = 44.f;
-        float avail_h = ImGui::GetContentRegionAvail().y - input_row_h;
+        const float input_row_gap = 14.f; // breathing room between the message list and the input box
+        float avail_h = ImGui::GetContentRegionAvail().y - input_row_h - input_row_gap;
         if (_messages.empty())
             draw_greeting(win, avail_h);
         else
             draw_messages(win, avail_h);
+        ImGui::Dummy({ 0.f, input_row_gap });
         draw_input_row(win, ImGui::GetContentRegionAvail().x);
 
         ImGui::End();
