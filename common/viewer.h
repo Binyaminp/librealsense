@@ -15,6 +15,9 @@
 #include "updates-model.h"
 #include "bag-conversion-helper.h"
 #include "assistant/assistant-model.h"
+#ifdef ENABLE_STATS
+#include "rum-uploader/rum-uploader.h"
+#endif
 #include <librealsense2/hpp/rs_export.hpp>
 
 namespace rs2
@@ -158,6 +161,9 @@ namespace rs2
         post_processing_filters ppf;
 
         context &ctx;
+#ifdef ENABLE_STATS
+        rs2::rum_uploader _rum_uploader;  // owns the "Upload now" worker; joins itself in its dtor
+#endif
         std::shared_ptr<notifications_model> not_model = std::make_shared<notifications_model>();
         std::shared_ptr<assistant_model> assistant = std::make_shared<assistant_model>();
         bool is_3d_view = false;

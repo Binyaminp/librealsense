@@ -17,21 +17,15 @@ from app.models.device import Device, DeviceInfo
 from app.models.sensor import Sensor, SensorInfo, SupportedStreamProfile
 from app.models.option import Option, OptionInfo
 from app.models.stream import PointCloudStatus, StreamConfig, StreamStatus, Resolution
-from app.models.sensor_streaming import (
-    SensorStreamConfig,
-    SensorStartItem,
-    SensorStreamStatus,
-    BatchSensorStatus,
-)
+from app.models.sensor_streaming import SensorStreamConfig, SensorStreamStatus
 import socketio
 from datetime import datetime
 
 from app.services.metadata_socket_server import MetadataSocketServer
+from app.services import firmware as fw
 
 
 _IS_WINDOWS = platform.system() == "Windows"
-
-FW_STATUS_UNKNOWN = "unknown"
 
 # Recent color frames retained per device for texturing the 3D point cloud.
 # Five frames at 30 fps covers the typical depth/color SDK-latency offset
@@ -66,6 +60,13 @@ class RealSenseManager:
         )  # device_id -> stream_type -> list of metadata dicts
         self.lock = threading.Lock()
         self.max_queue_size = 5
+
+        # Frame-arrival signalling for async consumers (WebRTC). ``_frame_seq``
+        # counts frames pushed per "<device_id>:<stream_type>"; collection
+        # threads bump it and set the matching asyncio.Event on the main loop,
+        # so waiters block without occupying an executor thread.
+        self._frame_seq: Dict[str, int] = {}
+        self._frame_events: Dict[str, asyncio.Event] = {}
         self.is_pointcloud_enabled: Dict[str, bool] = {}
         # One rs.pointcloud() per device: pc.map_to(color) mutates internal
         # state, and depth/color threads from different devices would race on
@@ -210,9 +211,6 @@ class RealSenseManager:
             name=_info(rs.camera_info.name, "Unknown Device"),
             serial_number=device_id,
             firmware_version=_info(rs.camera_info.firmware_version),
-            recommended_firmware_version=None,
-            firmware_status=FW_STATUS_UNKNOWN,
-            firmware_file_available=False,
             physical_port=_info(rs.camera_info.physical_port),
             usb_type=_info(rs.camera_info.usb_type_descriptor),
             product_id=_info(rs.camera_info.product_id),
@@ -300,16 +298,48 @@ class RealSenseManager:
                 return device
         raise RealSenseError(status_code=404, detail=f"Device {device_id} not found")
 
-    def get_firmware_status(self, device_id: str) -> Dict[str, Any]:
-        """Return firmware status metadata for a device."""
+    def get_recommended_firmware(self, device_id: str) -> Dict[str, Any]:
+        """Return the firmware version the online DB recommends for a device, if any."""
         device = self.get_device(device_id)
-        return {
-            "device_id": device_id,
-            "current": device.firmware_version,
-            "recommended": None,
-            "status": device.firmware_status or FW_STATUS_UNKNOWN,
-            "file_available": False,
-        }
+        recommended, _link = fw.recommended_firmware(device.name)
+        return {"recommended": recommended}
+
+    def update_firmware_from_recommended(self, device_id: str) -> Dict[str, Any]:
+        """Download the device's recommended firmware image and flash it.
+
+        Looks up the recommended .bin from the online versions DB, downloads it into
+        memory, and reuses the standard DFU flash flow — so Socket.IO
+        progress/success/failure events are emitted exactly as for a user-supplied file.
+        """
+        device = self.get_device(device_id)
+        recommended, link = fw.recommended_firmware(device.name)
+        if not link:
+            raise RealSenseError(status_code=404, detail="No recommended firmware available for this device")
+        # Refuse before downloading ~2 MiB to flash a version the device already has or beats.
+        if fw.is_newer_or_same(device.firmware_version, recommended):
+            raise RealSenseError(
+                status_code=409,
+                detail=f"Device already runs firmware {device.firmware_version}; recommended is {recommended}",
+            )
+        # Claim before emitting: a duplicate request must not put events on this device's
+        # channel, where they would rewrite the modal of the update already running.
+        self._claim_fw_update_slot(device_id)
+        # Emit download progress under the "downloading" phase so the UI can show it
+        # before the (separate) install phase begins.
+        _holder, on_download = self._make_fw_progress_callback(device_id, phase="downloading")
+        try:
+            fw_bytes = fw.download_firmware(link, on_progress=on_download)
+        except Exception as exc:
+            # Surface download failures on the same channel as flash failures so the
+            # progress modal shows the error instead of hanging.
+            self._emit_socket_event(
+                f"firmware_update_failed_{device_id}",
+                {"device_id": device_id, "error": str(exc)},
+            )
+            with self.lock:
+                self._fw_updates_in_progress.discard(device_id)
+            raise
+        return self.update_firmware_from_bytes(device_id, fw_bytes, slot_held=True)
 
     @staticmethod
     def _is_update_device(dev: rs.device) -> bool:
@@ -325,14 +355,15 @@ class RealSenseManager:
         except Exception:
             return False
 
-    def update_firmware_from_bytes(self, device_id: str, fw_bytes: bytes) -> Dict[str, Any]:
+    def update_firmware_from_bytes(self, device_id: str, fw_bytes: bytes, slot_held: bool = False) -> Dict[str, Any]:
         """Run firmware update using a user-supplied image blob.
 
         Reuses the DFU flow: check_firmware_compatibility -> enter_update_state ->
         wait for DFU device -> update_dev.update(image, on_progress) -> wait for reconnect.
         Emits the same Socket.IO progress / success / failure events as a bundled-image update.
         """
-        self._claim_fw_update_slot(device_id)
+        if not slot_held:
+            self._claim_fw_update_slot(device_id)
         try:
             self._ensure_fw_update_allowed(device_id)
             # pyrealsense2 accepts bytes-like objects; bytearray keeps memory
@@ -354,11 +385,9 @@ class RealSenseManager:
             firmware_update_id = self._resolve_firmware_update_id(target_dev, device_id)
 
             progress_holder, on_progress = self._make_fw_progress_callback(device_id)
-            # Always emit a starting progress so the UI doesn't stay at 0% forever
-            self._emit_socket_event(
-                f"firmware_progress_{device_id}",
-                {"device_id": device_id, "progress": 0.0},
-            )
+            # Mark the install phase up front: the one-click path has been showing download
+            # progress, and the SDK's first flash tick only arrives after DFU re-enumeration.
+            on_progress(0.0)
 
             try:
                 update_dev = self._enter_dfu_and_get_update_dev(
@@ -397,23 +426,23 @@ class RealSenseManager:
                 raise RealSenseError(status_code=500, detail=f"Firmware update failed: {exc}")
 
             updated_info = self._refresh_until_device_returns(device_id)
+            if not updated_info:
+                # Written, but a device that never came back is not a success we can report.
+                raise RealSenseError(
+                    status_code=504,
+                    detail="Firmware written, but the device did not reconnect. "
+                           "Power-cycle it and check its version.",
+                )
 
             self._emit_socket_event(
-                f"firmware_progress_{device_id}",
-                {"device_id": device_id, "progress": 1.0},
-            )
-            self._emit_socket_event(
                 f"firmware_update_success_{device_id}",
-                {
-                    "device_id": device_id,
-                    "firmware_version": updated_info.firmware_version if updated_info else None,
-                },
+                {"device_id": device_id, "firmware_version": updated_info.firmware_version},
             )
 
             return {
                 "device_id": device_id,
                 "progress": progress_holder["value"],
-                "firmware_version": updated_info.firmware_version if updated_info else None,
+                "firmware_version": updated_info.firmware_version,
                 "status": "success",
             }
         except RealSenseError as exc:
@@ -493,11 +522,12 @@ class RealSenseManager:
         return firmware_update_id
 
     def _make_fw_progress_callback(
-        self, device_id: str,
+        self, device_id: str, phase: str = "installing",
     ) -> Tuple[Dict[str, float], Callable[[float], None]]:
         """Build the on_progress callback and a holder dict that records the latest value.
 
         Rate-limits emissions to ~10/sec but always lets the final 100% through.
+        `phase` ("downloading" | "installing") lets the UI label what's happening.
         """
         progress_holder = {"value": 0.0}
         last_emit_ts = {"value": 0.0}
@@ -510,7 +540,7 @@ class RealSenseManager:
             last_emit_ts["value"] = now
             self._emit_socket_event(
                 f"firmware_progress_{device_id}",
-                {"device_id": device_id, "progress": float(p)},
+                {"device_id": device_id, "progress": float(p), "phase": phase},
             )
 
         return progress_holder, _on_progress
@@ -1595,9 +1625,49 @@ class RealSenseManager:
             stopping=stopping,
         )
 
+    def _publish_frames(self, device_id: str, stream_types) -> None:
+        """Bump the arrival counter for each stream and wake async waiters.
+
+        Runs on collection threads; the events are set via the main loop so
+        waiters need no executor thread.
+        """
+        loop = RealSenseManager._main_loop
+        for stream_type in stream_types:
+            key = f"{device_id}:{stream_type.lower()}"
+            self._frame_seq[key] = self._frame_seq.get(key, 0) + 1
+            event = self._frame_events.get(key)
+            if event is not None and loop is not None and not loop.is_closed():
+                loop.call_soon_threadsafe(event.set)
+
+    async def wait_for_frame_after(
+        self, device_id: str, stream_type: str, last_seq: int, timeout: float = 1.0
+    ) -> Tuple[Optional[np.ndarray], int]:
+        """Wait until a frame newer than ``last_seq`` arrives, then return it.
+
+        Returns ``(frame, seq)``; ``frame`` is None on timeout. The seq is read
+        after the frame is fetched, so a frame landing in between skips ahead
+        rather than being re-delivered.
+        """
+        key = f"{device_id}:{stream_type.lower()}"
+        event = self._frame_events.setdefault(key, asyncio.Event())
+        deadline = time.monotonic() + timeout
+        while self._frame_seq.get(key, 0) <= last_seq:
+            event.clear()
+            if self._frame_seq.get(key, 0) > last_seq:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None, last_seq
+            try:
+                await asyncio.wait_for(event.wait(), remaining)
+            except asyncio.TimeoutError:
+                return None, last_seq
+        frame = self.get_latest_frame(device_id, stream_type)
+        return frame, self._frame_seq.get(key, 0)
+
     def get_latest_frame(
         self, device_id: str, stream_type: str
-    ) -> Tuple[np.ndarray, dict]:
+    ) -> np.ndarray:
         """Get the latest frame from a specific stream (supports both pipeline and sensor modes)"""
         with self.lock:
             mode = self.streaming_mode.get(device_id, "idle")
@@ -2042,6 +2112,8 @@ class RealSenseManager:
                             while len(metadata_queue) > self.max_queue_size:
                                 metadata_queue.pop(0)
 
+                    self._publish_frames(device_id, processed_frames.keys())
+
                 except RuntimeError as e:
                     # Handle timeout or other error
                     print(f"Error collecting frames: {str(e)}")
@@ -2454,7 +2526,9 @@ class RealSenseManager:
                             mqueue.append(metadata)
                             while len(mqueue) > self.max_queue_size:
                                 mqueue.pop(0)
-                    
+
+                    self._publish_frames(device_id, (target_stream_type,))
+
                 except Exception as e:
                     if "timeout" not in str(e).lower():
                         logging.debug(f"[SENSOR] Frame collection error: {e}")
@@ -2801,121 +2875,6 @@ class RealSenseManager:
                 error=info.get("error"),
                 started_at=info.get("started_at"),
             )
-
-    def batch_start_sensors(
-        self,
-        device_id: str,
-        sensors: List[SensorStartItem]
-    ) -> BatchSensorStatus:
-        """
-        Start multiple sensors atomically.
-        
-        If any sensor fails to start, all previously started sensors are stopped.
-        
-        Args:
-            device_id: The device ID
-            sensors: List of sensor configurations to start
-            
-        Returns:
-            BatchSensorStatus with status of all sensors
-        """
-        # Check mode compatibility
-        self._check_streaming_mode(device_id, "sensor")
-        
-        started = []
-        errors = []
-        
-        for item in sensors:
-            try:
-                status = self.start_sensor(device_id, item.sensor_id, item.config)
-                if status.error:
-                    raise Exception(status.error)
-                started.append(item.sensor_id)
-            except Exception as e:
-                errors.append(f"Failed to start {item.sensor_id}: {str(e)}")
-                # Rollback: stop all successfully started sensors
-                for started_sensor_id in started:
-                    try:
-                        self.stop_sensor(device_id, started_sensor_id)
-                    except:
-                        pass
-                break
-        
-        return self.get_batch_status(device_id)
-
-    def batch_stop_sensors(
-        self,
-        device_id: str,
-        sensor_ids: Optional[List[str]] = None
-    ) -> BatchSensorStatus:
-        """
-        Stop multiple sensors.
-        
-        Args:
-            device_id: The device ID
-            sensor_ids: List of sensor IDs to stop, or None to stop all
-            
-        Returns:
-            BatchSensorStatus with status of all sensors
-        """
-        with self.lock:
-            if device_id not in self.sensor_streams:
-                return BatchSensorStatus(
-                    device_id=device_id,
-                    mode=self.streaming_mode.get(device_id, "idle"),
-                    sensors=[],
-                    errors=[],
-                )
-            
-            # Get sensor IDs to stop
-            if sensor_ids is None:
-                sensor_ids = list(self.sensor_streams[device_id].keys())
-        
-        errors = []
-        for sensor_id in sensor_ids:
-            try:
-                self.stop_sensor(device_id, sensor_id)
-            except Exception as e:
-                errors.append(f"Failed to stop {sensor_id}: {str(e)}")
-        
-        status = self.get_batch_status(device_id)
-        status.errors = errors
-        return status
-
-    def get_batch_status(
-        self,
-        device_id: str
-    ) -> BatchSensorStatus:
-        """
-        Get streaming status for all sensors on a device.
-        
-        Args:
-            device_id: The device ID
-            
-        Returns:
-            BatchSensorStatus with status of all sensors
-        """
-        if device_id not in self.devices:
-            self.refresh_devices()
-            if device_id not in self.devices:
-                raise RealSenseError(
-                    status_code=404, detail=f"Device {device_id} not found"
-                )
-        
-        # Get all sensors for the device
-        sensors_info = self.get_sensors(device_id)
-        
-        sensor_statuses = []
-        for sensor_info in sensors_info:
-            status = self.get_sensor_status(device_id, sensor_info.sensor_id)
-            sensor_statuses.append(status)
-        
-        return BatchSensorStatus(
-            device_id=device_id,
-            mode=self.streaming_mode.get(device_id, "idle"),
-            sensors=sensor_statuses,
-            errors=[],
-        )
 
     def get_sensor_frame(
         self,

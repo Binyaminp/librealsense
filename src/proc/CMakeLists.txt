@@ -2,7 +2,7 @@
 # Copyright(c) 2019 RealSense, Inc. All Rights Reserved.
 string(REPLACE ${PROJECT_SOURCE_DIR}/ "" _proc_rel_path ${CMAKE_CURRENT_LIST_DIR})
 
-if (BUILD_WITH_CUDA)
+if (BUILD_WITH_CUDA OR BUILD_WITH_HIP)
     include(${_proc_rel_path}/cuda/CMakeLists.txt)
 endif()
 
@@ -39,6 +39,10 @@ target_sources(${LRS_TARGET}
         "${CMAKE_CURRENT_LIST_DIR}/units-transform.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/rotation-transform.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/color-formats-converter.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/rggb-debayer.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/rggb-converter.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/stereo-rectify.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/dual-rgb-rectify-filter.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/depth-formats-converter.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/motion-transform.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/auto-exposure-processor.cpp"
@@ -72,6 +76,10 @@ target_sources(${LRS_TARGET}
         "${CMAKE_CURRENT_LIST_DIR}/units-transform.h"
         "${CMAKE_CURRENT_LIST_DIR}/rotation-transform.h"
         "${CMAKE_CURRENT_LIST_DIR}/color-formats-converter.h"
+        "${CMAKE_CURRENT_LIST_DIR}/rggb-debayer.h"
+        "${CMAKE_CURRENT_LIST_DIR}/rggb-converter.h"
+        "${CMAKE_CURRENT_LIST_DIR}/stereo-rectify.h"
+        "${CMAKE_CURRENT_LIST_DIR}/dual-rgb-rectify-filter.h"
         "${CMAKE_CURRENT_LIST_DIR}/depth-formats-converter.h"
         "${CMAKE_CURRENT_LIST_DIR}/motion-transform.h"
         "${CMAKE_CURRENT_LIST_DIR}/auto-exposure-processor.h"

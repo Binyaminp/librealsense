@@ -107,9 +107,9 @@ namespace librealsense
             this );
 
         auto color_ep = std::make_shared<d500_color_sensor>(this,
-            raw_color_ep,
-            d500_color_fourcc_to_rs2_format,
-            d500_color_fourcc_to_rs2_stream);
+                                                            raw_color_ep,
+                                                            d500_color_fourcc_to_rs2_format,
+                                                            d500_color_fourcc_to_rs2_stream);
 
         color_ep->register_option(RS2_OPTION_GLOBAL_TIME_ENABLED, enable_global_time_option);
 
@@ -162,8 +162,16 @@ namespace librealsense
                 RS2_FORMAT_M420,
                 map_supported_color_formats( RS2_FORMAT_M420 ),
                 RS2_STREAM_COLOR ) );
-            color_ep.register_processing_block(
-                processing_block_factory::create_id_pbf( RS2_FORMAT_YUYV, RS2_STREAM_COLOR ) );
+            // MIPI FW currently delivers YUYV rather than NV12, so convert it to RGB until NV12 is supported.
+            // On USB, YUY2 remains exposed passthrough-only.
+            if( _is_mipi_device )
+                color_ep.register_processing_block( processing_block_factory::create_pbf_vector< yuy2_converter >(
+                    RS2_FORMAT_YUYV,
+                    map_supported_color_formats( RS2_FORMAT_YUYV ),
+                    RS2_STREAM_COLOR ) );
+            else
+                color_ep.register_processing_block(
+                    processing_block_factory::create_id_pbf( RS2_FORMAT_YUYV, RS2_STREAM_COLOR ) );
             break;
         default:
             throw invalid_value_exception( "invalid native color format "

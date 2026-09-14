@@ -11,8 +11,10 @@
 #include "platform/uvc-option.h"
 #include "platform/stream-profile-impl.h"
 #include <src/metadata-parser.h>
+#include <rsutils/string/from.h>
 #include <src/core/time-service.h>
 #include <src/core/frame-continuation.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -125,6 +127,18 @@ void uvc_sensor::verify_supported_requests( const stream_profiles & requests ) c
         throw( std::runtime_error(
             "Wrong configuration requested - GYRO and ACCEL streams' fps to be equal for this device" ) );
     }
+
+    // A backend pin holds one configuration at a time, so two requests on the same pin can never coexist.
+    std::map< uint32_t, std::shared_ptr< stream_profile_interface > > requests_per_pin;
+    for( auto && req : requests )
+    {
+        auto && req_base = std::dynamic_pointer_cast< stream_profile_base >( req );
+        auto inserted = requests_per_pin.emplace( req_base->get_backend_profile().pin_index, req );
+        if( ! inserted.second )
+            throw std::runtime_error( rsutils::string::from()
+                                      << "Wrong configuration requested - " << inserted.first->second << " and " << req
+                                      << " are served by the same hardware endpoint and cannot stream together" );
+    }
 }
 
 void uvc_sensor::open( const stream_profiles & requests )
@@ -146,6 +160,17 @@ void uvc_sensor::open( const stream_profiles & requests )
 
     _zc_inflight.clear();  // drained/read in close(); repopulated per stream below
 
+    // On devices that opt in (enable_software_color_frame_numbers), the color pins share a single
+    // hardware frame counter, so each stream's frame number jumps by the number of color streams per
+    // interval - which makes the reported (hardware) FPS read 2x. Give each color stream its own
+    // software frame counter, mirroring the accel/gyro override below.
+    int color_stream_count = 0;
+    if( _sw_color_frame_numbers )
+        for( auto && rp : requests )
+            if( rp->get_stream_type() == RS2_STREAM_COLOR )
+                ++color_stream_count;
+    const bool per_stream_color_fn = ( color_stream_count > 1 );
+
     for( auto && req_profile : requests )
     {
         auto && req_profile_base = std::dynamic_pointer_cast< stream_profile_base >( req_profile );
@@ -160,7 +185,8 @@ void uvc_sensor::open( const stream_profiles & requests )
             _zc_inflight.push_back( zc_inflight );  // close() drains this before buffers are freed
             _device->probe_and_commit(
                 req_profile_base->get_backend_profile(),
-                [this, req_profile_base, req_profile, last_frame_number, last_timestamp, zc_inflight](
+                [this, req_profile_base, req_profile, last_frame_number, last_timestamp, zc_inflight,
+                 per_stream_color_fn, color_fn = 0ull](
                     platform::stream_profile p,
                     platform::frame_object f,
                     std::function< void() > continuation ) mutable
@@ -203,6 +229,15 @@ void uvc_sensor::open( const stream_profiles & requests )
                         frame_counter = fr->additional_data.frame_number;
                     }
 
+                    // Dual color streams share one hardware frame counter; give each its own
+                    // per-stream software counter so the reported (hardware) FPS isn't doubled
+                    // (see per_stream_color_fn). Mirrors the accel/gyro override above.
+                    if( per_stream_color_fn && req_profile_base->get_stream_type() == RS2_STREAM_COLOR )
+                    {
+                        fr->additional_data.frame_number = ++color_fn;
+                        frame_counter = fr->additional_data.frame_number;
+                    }
+
                     LOG_DEBUG( "FrameAccepted,"
                                << librealsense::get_string( req_profile_base->get_stream_type() ) << ",Counter,"
                                << std::dec << fr->additional_data.frame_number << ",Index,"
@@ -230,12 +265,19 @@ void uvc_sensor::open( const stream_profiles & requests )
 
                     auto extension = frame_source::stream_to_frame_types( req_profile_base->get_stream_type() );
                     const bool is_perception = ( extension == RS2_EXTENSION_OBJECT_DETECTION_FRAME );
+                    // The depth-mapping streams are the same case: the profile describes the
+                    // occupancy canvas / point-cloud geometry, while the wire carries a framed
+                    // payload with its own headers, so width*height*bpp is not its length.
+                    const bool is_depth_mapping
+                        = ( extension == RS2_EXTENSION_LABELED_POINTS )
+                       || ( req_profile_base->get_stream_type() == RS2_STREAM_OCCUPANCY );
 
                     if( ! msp )
                         expected_size = compute_frame_expected_size( width, height, bpp );
 
                     // Compressed and perception streams carry variable-length payloads; copy the data as received.
-                    if( val_in_range( req_profile_base->get_format(), { RS2_FORMAT_MJPEG } ) || is_perception )
+                    if( val_in_range( req_profile_base->get_format(), { RS2_FORMAT_MJPEG } )
+                        || is_perception || is_depth_mapping )
                         expected_size = f.frame_size;
 
                     // The MIPI 64-byte width realignment path must copy (it rewrites the pixel
@@ -294,9 +336,12 @@ void uvc_sensor::open( const stream_profiles & requests )
                         // when the resolution's width is not aligned to 64
                         else if( align64 )
                         {
-                            std::vector< uint8_t > pixels = align_width_to_64( width, height, bpp, (uint8_t *)f.pixels );
-                            assert( expected_size == sizeof( uint8_t ) * pixels.size() );
-                            memcpy( (void *)fh->get_frame_data(), pixels.data(), expected_size );
+                            std::vector< uint8_t > pixels = align_width_to_64(
+                                width, height, bpp, req_profile_base->get_format(), (uint8_t *)f.pixels );
+                            // Clamp rather than trust the layout: a short repack would otherwise read past the buffer
+                            if( pixels.size() < expected_size )
+                                LOG_ERROR( "Realigned frame is " << pixels.size() << " bytes, expected " << expected_size );
+                            memcpy( (void *)fh->get_frame_data(), pixels.data(), std::min( expected_size, pixels.size() ) );
                         }
                         else
                         {
@@ -378,6 +423,24 @@ void uvc_sensor::open( const stream_profiles & requests )
     try
     {
         _device->stream_on( [&]( const notification & n ) { _notifications_processor->raise_notification( n ); } );
+    }
+    catch( const backend_exception & )          // e.g. "Device or resource busy" - keep its type
+    {
+        for( auto && profile : _internal_config )
+        {
+            try
+            {
+                _device->close( profile );
+            }
+            catch( ... )
+            {
+            }
+        }
+        reset_streaming();
+        _power.reset();
+        _is_opened = false;
+
+        throw;
     }
     catch( ... )
     {

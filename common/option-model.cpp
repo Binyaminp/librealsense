@@ -34,7 +34,7 @@ namespace rs2
         option.dev = model;
         option.value = opt;
         option.supported = opt->is_valid;  // i.e., supported-and-enabled!
-        option.range = options->get_option_range( opt->id );
+        option.range = opt.range();
         option.read_only = options->is_option_read_only( opt->id );
         option.last_slider_hold_stopwatch.reset( {} ); // Avoids seeming as if a slider was dragged and just released.
         return option;
@@ -997,7 +997,8 @@ void option_model::set_option_sync( float req_value )
             }
             c.try_sleep( std::chrono::milliseconds( 50 ) );
         },
-        []() { return false; } );
+        []() { return false; },
+        true );
 }
 
 void option_model::update_value( const rs2::option_value & updated_value, notifications_model & model )

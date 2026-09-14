@@ -58,6 +58,10 @@ jobs:
       ROS_DISTRO: ${{ matrix.ros_distro }}
       PRERELEASE: true
       BASEDIR: ${{ github.workspace }}/.work
+      # industrial_ci defaults the prerelease host container to ros:noetic-ros-core
+      # (focal, EOL). Must stay a ros:* image — setting DOCKER_IMAGE disables
+      # industrial_ci's ROS apt setup, so colcon must be installable already.
+      DOCKER_IMAGE: ros:jazzy-ros-core
 
     steps:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 #v4

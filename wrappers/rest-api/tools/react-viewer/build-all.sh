@@ -33,7 +33,7 @@ Output Locations (relative to the repository root):
 
 Requirements:
   - Node.js 18+
-  - Python 3.8+
+  - Python 3.10+
   - Rust 1.56+ (install from https://rustup.rs/)
   - PyInstaller (pip install pyinstaller)
 EOF

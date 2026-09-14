@@ -45,6 +45,12 @@ public:
                                                      int & index ) >;
     void set_stream_id_resolver( stream_id_resolver resolver ) { _stream_id_resolver = std::move( resolver ); }
 
+    // Opt in to a per-stream software frame number for color, for devices whose color pins share one
+    // hardware frame counter (D401 GMSL dual-RGB). Off by default: it makes get_frame_number() count
+    // 1,2,3... so counter-gap frame-drop detection no longer works and the value no longer matches
+    // RS2_FRAME_METADATA_FRAME_COUNTER, which still reports the raw hardware counter.
+    void enable_software_color_frame_numbers() { _sw_color_frame_numbers = true; }
+
     std::vector< platform::stream_profile > get_configuration() const { return _internal_config; }
     std::shared_ptr< platform::uvc_device > get_uvc_device() { return _device; }
     platform::usb_spec get_usb_specification() const { return _device->get_usb_specification(); }
@@ -81,6 +87,7 @@ private:
     void reset_streaming();
     std::atomic<int64_t> _gyro_counter;
     std::atomic<int64_t> _accel_counter;
+    bool _sw_color_frame_numbers = false;  // see enable_software_color_frame_numbers()
 
 
     struct power

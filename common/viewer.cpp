@@ -2163,7 +2163,8 @@ namespace rs2
                 }
             }
 
-            //switch( stream_mv.profile.stream_type() )
+            // Detection overlays only make sense on the color stream; bbox coords are in color-frame space.
+            if( stream_mv.profile.stream_type() == RS2_STREAM_COLOR )
             {
                 static std::vector< std::pair< ImColor, bool > > colors =
                 {
@@ -2237,10 +2238,7 @@ namespace rs2
 
                 for( object_in_frame & object : *p_objects )
                 {
-                    rect const & normalized_bbox = stream_mv.profile.stream_type() == RS2_STREAM_DEPTH
-                        ? object.normalized_depth_bbox
-                        : object.normalized_color_bbox;
-                    rect const unbbox = normalized_bbox.unnormalize( stream_rect );
+                    rect const unbbox = object.normalized_color_bbox.unnormalize( stream_rect );
                     rect bbox = unbbox.grow( 10, 5 );  // Allow more text, and easier identification of the face
 
                     float a = 0.75f;
@@ -2264,17 +2262,17 @@ namespace rs2
                     if( fabs(object.mean_depth) > 0.f )
                     {
                         ImGui::PushFont( font2 );
-                        std::string str = rsutils::string::from() << std::setprecision( 2 ) << object.mean_depth << " m";
-                        auto size = ImGui::CalcTextSize( str.c_str() );
-                        if( size.y < h  &&  size.x < bbox.w )
+                        std::string const depth_str = rsutils::string::from() << std::setprecision( 2 ) << object.mean_depth << " m";
+                        auto const depth_size = ImGui::CalcTextSize( depth_str.c_str() );
+                        if( depth_size.y < h && depth_size.x < bbox.w )
                         {
                             ImGui::GetWindowDrawList()->AddRectFilled(
                                 { bbox.x + 1, bbox.y + 1 },
-                                { bbox.x + size.x + 20, bbox.y + size.y + 6 },
+                                { bbox.x + depth_size.x + 20, bbox.y + depth_size.y + 6 },
                                 bg );
                             ImGui::SetCursorScreenPos( { bbox.x + 10, bbox.y + 3 } );
-                            ImGui::Text("%s",  str.c_str() );
-                            h -= size.y;
+                            ImGui::Text( "%s", depth_str.c_str() );
+                            h -= depth_size.y;
                         }
                         ImGui::PopFont();
                     }
@@ -2323,6 +2321,9 @@ namespace rs2
                     auto depth_height = depth_vid_profile.height();
                     auto depth_data = static_cast<const uint16_t*>(frame.get_data());
                     auto textured_depth_data = static_cast<const uint8_t*>(textured_frame.get_data());
+                    // Take the scale off the frame, like the colorizer does: sensors that don't
+                    // expose RS2_OPTION_DEPTH_UNITS (DDS) leave the cached value at its 1.0 default.
+                    const float depth_scale = frame.as<depth_frame>().get_units();
                     static const auto skip_pixels_factor = 30;
                     std::vector<rgb_per_distance> rgb_per_distance_vec;
                     std::vector<float> distances;
@@ -2331,7 +2332,7 @@ namespace rs2
                         for (uint64_t j = 0; j < depth_width; j+= skip_pixels_factor)
                         {
                             auto depth_index = i*depth_width + j;
-                            auto length = depth_data[depth_index] * stream_mv.dev->depth_units;
+                            auto length = depth_data[depth_index] * depth_scale;
                             if (length > 0.f)
                             {
                                 auto textured_depth_index = depth_index * 3;
@@ -2425,11 +2426,15 @@ namespace rs2
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        clear_gl_errors();
+
         glLoadIdentity();
 
         glMatrixMode(GL_PROJECTION);
         glPushMatrix();
-        gluPerspective(45, non_negative(viewer_rect.w / win.framebuf_height()), 0.001f, 100.0f);
+        const auto aspect = non_negative( viewer_rect.w )
+            / std::max( 1.f, non_negative( win.framebuf_height() ) );
+        gluPerspective( 45, aspect > 0.f ? aspect : 1.f, 0.001f, 100.0f );
         matrix4 perspective_mat;
         glGetFloatv(GL_PROJECTION_MATRIX, perspective_mat);
         glPopMatrix();
@@ -2960,19 +2965,21 @@ namespace rs2
                     temp_cfg.set(configurations::viewer::settings_tab, tab);
                 }
                 ImGui::PopStyleColor(2);
+#ifdef BUILD_WITH_LIBCURL
+                // One "Online Services" tab hosting both curl-backed features (updates + usage stats);
+                // each section renders only if its feature is compiled in.
                 ImGui::SameLine();
-
                 ImGui::PushStyleColor(ImGuiCol_Text, tab != 3 ? light_grey : light_blue);
                 ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, tab != 3 ? light_grey : light_blue);
-
-                if (ImGui::Button("Updates", { 120, 30 }))
+                if (ImGui::Button("Online Services", { 160, 30 }))
                 {
                     tab = 3;
                     config_file::instance().set(configurations::viewer::settings_tab, tab);
                     temp_cfg.set(configurations::viewer::settings_tab, tab);
                 }
-
                 ImGui::PopStyleColor(2);
+#endif
+
                 ImGui::PopFont();
                 ImGui::PopStyleColor(2); // button color
 
@@ -3015,7 +3022,7 @@ namespace rs2
 
                     ImGui::Text("ROS-bag Compression:");
                     int recording_compression = temp_cfg.get(configurations::record::compression_mode);
-                    if (ImGui::RadioButton("Always Compress (only playable using the SDK, might cause frame drops)", recording_compression == 0))
+                    if (ImGui::RadioButton("Always Compress (smaller file size, might cause frame drops)", recording_compression == 0))
                     {
                         recording_compression = 0;
                         temp_cfg.set(configurations::record::compression_mode, recording_compression);
@@ -3376,8 +3383,6 @@ namespace rs2
                 if (tab == 3)
                 {
 #ifdef CHECK_FOR_UPDATES
-                    ImGui::Separator();
-
                     ImGui::Text("%s", "SW/FW Updates From Server:");
                     if (ImGui::IsItemHovered())
                     {
@@ -3419,6 +3424,64 @@ namespace rs2
                             temp_cfg.set(configurations::update::sw_updates_url, url_str);
                         }
                     }
+
+                    ImGui::Separator();
+#endif
+
+#ifdef ENABLE_STATS
+                    ImGui::Text("Real User Monitoring (RUM)");
+                    ImGui::Text("Anonymous usage statistics are collected locally. Cloud upload happens only with your consent.");
+
+                    bool cloud_enabled = temp_cfg.get_or_default(configurations::stats::rum_cloud_enabled, false);
+                    if (ImGui::Checkbox("Enable anonymous cloud upload", &cloud_enabled))
+                        temp_cfg.set(configurations::stats::rum_cloud_enabled, cloud_enabled);
+
+                    if (ImGui::Button("Export RUM data..."))
+                    {
+                        // The accumulated on-disk report (prior sessions); the live session is not
+                        // persisted until this context is destroyed, so it isn't included here. Skip
+                        // if there's no usage yet (missing file, or a post-upload reset stub).
+                        if (!_rum_uploader.saved_report_has_usage())
+                            not_model->add_notification({ "No RUM report saved yet", RS2_LOG_SEVERITY_INFO,
+                                RS2_NOTIFICATION_CATEGORY_UNKNOWN_ERROR });
+                        else if (auto ret = file_dialog_open(save_file, "JSON\0*.json\0", NULL, NULL))
+                        {
+                            try
+                            {
+                                std::ofstream(ret) << _rum_uploader.saved_report();
+                            }
+                            catch (const std::exception& e) { LOG_ERROR("RUM export failed: " << e.what()); }
+                        }
+                    }
+                    ImGui::SameLine();
+                    // TODO: "Upload now" (and rum_uploader::upload_async) is a testing affordance to send
+                    // the accumulated on-disk report on demand; boot upload is the product path. Drop it once RUM is fully merged.
+                    // Gate on the saved consent, not the checkbox: upload() reads the persisted value,
+                    // so the button must stay disabled until the choice is applied (OK/Apply).
+                    bool consent_saved = config_file::instance().get_or_default(configurations::stats::rum_cloud_enabled, false);
+                    RsImGui::RsImButton([&]() {
+                        if (ImGui::Button("Upload now"))
+                        {
+                            if (!_rum_uploader.saved_report_has_usage())
+                                not_model->add_notification({ "No RUM report saved yet", RS2_LOG_SEVERITY_INFO,
+                                    RS2_NOTIFICATION_CATEGORY_UNKNOWN_ERROR });
+                            else
+                                // Off the UI thread; the uploader skips if one is already in flight.
+                                // Capture not_model by value so the callback (on the upload thread) stays valid.
+                                _rum_uploader.upload_async(_rum_uploader.saved_report(),
+                                    [not_model = not_model](bool ok) {
+                                        not_model->add_notification({ ok ? "RUM report uploaded" : "RUM upload failed",
+                                            ok ? RS2_LOG_SEVERITY_INFO : RS2_LOG_SEVERITY_ERROR,
+                                            RS2_NOTIFICATION_CATEGORY_UNKNOWN_ERROR });
+                                    });
+                        }
+                    }, !consent_saved);
+                    // AllowWhenDisabled: the button is disabled until consent is applied, but the
+                    // hint explaining why must still show on hover.
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        RsImGui::CustomTooltip(consent_saved
+                            ? "Upload the saved report now"
+                            : "Enable cloud upload above and click Apply first");
 #endif
                 }
                 }
@@ -3773,10 +3836,14 @@ namespace rs2
 
     void viewer_model::begin_stream(std::shared_ptr<subdevice_model> d, rs2::stream_profile p)
     {
+        {
+            std::lock_guard< std::mutex > lock( streams_mutex );
+            streams[p.unique_id()].begin_stream(d, p, *this);
+            ppf.frames_queue.emplace(p.unique_id(), rs2::frame_queue(5));
+        }
+
         // Starting post processing filter rendering thread
         ppf.start();
-        streams[p.unique_id()].begin_stream(d, p, *this);
-        ppf.frames_queue.emplace(p.unique_id(), rs2::frame_queue(5));
     }
 
     bool viewer_model::is_3d_texture_source(frame f) const
@@ -4029,23 +4096,8 @@ namespace rs2
                                       float( det.bottom_right_y - det.top_left_y ) };
                 rs2::rect normalized_color_bbox = color_bbox.normalize( color_frame_rect );
 
-                // depth_bbox_full: simple resolution scaling of the color bbox.
-                // COM runs within this region for a stable, deterministic depth measurement.
-                // The depth-view dot position is corrected for sensor parallax separately
-                // by projecting the single COM pixel through rs2_project_color_pixel_to_depth_pixel.
-                float const depth_scale_x = float( depth_intrin.width  ) / float( color_intrin.width  );
-                float const depth_scale_y = float( depth_intrin.height ) / float( color_intrin.height );
-                // depth_bbox_full: unclipped scaled bbox — used for com_rel_u/v normalization.
-                // Clipping only affects the actual ROI sampled.
-                rs2::rect depth_bbox_full{
-                    color_bbox.x * depth_scale_x, color_bbox.y * depth_scale_y,
-                    color_bbox.w * depth_scale_x, color_bbox.h * depth_scale_y };
-                rs2::rect depth_bbox = depth_bbox_full.intersection( depth_frame_rect );
-                rs2::rect normalized_depth_bbox = depth_bbox.normalize( depth_frame_rect );
-
                 float const hkr_depth_m = det.depth;
                 float viewer_depth_m = 0.f;
-                float com_rel_u = 0.5f, com_rel_v = 0.5f;
 
                 // TODO: temporary fallback — viewer-side COM runs only when HKR firmware
                 // returns 0 (XU command not supported or device not ready).
@@ -4059,6 +4111,12 @@ namespace rs2
                         com::center_of_mass_calculator::create_depth_8u( com_raw, com_depth8u );
                         depth8u_ready = true;
                     }
+                    // COM ROI: scale the color bbox to depth resolution, clipped to the frame.
+                    float const depth_scale_x = float( depth_intrin.width  ) / float( color_intrin.width  );
+                    float const depth_scale_y = float( depth_intrin.height ) / float( color_intrin.height );
+                    rs2::rect depth_bbox = rs2::rect{
+                        color_bbox.x * depth_scale_x, color_bbox.y * depth_scale_y,
+                        color_bbox.w * depth_scale_x, color_bbox.h * depth_scale_y }.intersection( depth_frame_rect );
                     int const com_x = (int)depth_bbox.x;
                     int const com_y = (int)depth_bbox.y;
                     com::rect  com_bbox{ com_x, com_y,
@@ -4092,22 +4150,14 @@ namespace rs2
                     com::center_of_mass_calculator::calculate( com_raw, com_depth8u, com_bbox, com_center,
                                                                &com_intrin, com_result, { shift_x, shift_y } );
                     if( com_result.mean_body_depth > 0.f )
-                    {
                         viewer_depth_m = com_result.mean_body_depth / 1000.f;
-                        auto clamp01 = []( float v ) { return v < 0.f ? 0.f : v > 1.f ? 1.f : v; };
-                        if( depth_bbox_full.w > 0.f && depth_bbox_full.h > 0.f )
-                        {
-                            com_rel_u = clamp01( ( com_result.image_pos.x - depth_bbox_full.x ) / depth_bbox_full.w );
-                            com_rel_v = clamp01( ( com_result.image_pos.y - depth_bbox_full.y ) / depth_bbox_full.h );
-                        }
-                    }
                 }
 
                 float const mean_depth = hkr_depth_m > 0.f ? hkr_depth_m : viewer_depth_m;
 
                 std::string name = object_type_to_string( static_cast< object_type >( det.class_id ) );
-                new_objects.emplace_back( obj_id++, name, normalized_color_bbox, normalized_depth_bbox, mean_depth,
-                                          hkr_depth_m, com_rel_u, com_rel_v, det.score,
+                new_objects.emplace_back( obj_id++, name, normalized_color_bbox, mean_depth,
+                                          hkr_depth_m, det.score,
                                           static_cast< object_type >( det.class_id ) );
             }
 
@@ -4290,11 +4340,15 @@ namespace rs2
 
     void viewer_model::draw_zone_3d(Zone zone, const rs2::labeled_points& frame)
     {
+        const auto MM_TO_METER_SCALE = 0.001f; // coords are in mm, converts to meters
+        auto zone_to_draw = init_zone(zone, frame, MM_TO_METER_SCALE);
+        // Nothing to draw, and nothing opened: an exception between glBegin and glEnd would
+        // leave the GL state machine mid-primitive and fail every later call.
+        if( zone_to_draw.empty() )
+            return;
+
         glLineWidth(4.0f);
         glBegin(GL_LINE_LOOP);
-
-        const auto MM_TO_METER_SCALE = 0.001f; // coords are in mm, converts to meters
-        auto zone_to_draw = init_zone(zone, frame, MM_TO_METER_SCALE); 
         set_polygon_color(zone);
 
         for (vertex& v : zone_to_draw)
@@ -4345,25 +4399,35 @@ namespace rs2
             draw_zone_3d(Zone::Diagnostic, labeled_points);
         }
 
-        glBegin(GL_POINTS);
+        const rs2::vertex* vertices = nullptr;
+        const uint8_t* labels = nullptr;
+        size_t vertices_size = 0;
+        try
         {
-            auto vertices = last_labeled_points.get_vertices();
-            auto vertices_size = last_labeled_points.size();
-            auto labels = last_labeled_points.get_labels();
-            auto label_to_color3f = labeled_point_cloud_utilities::get_label_to_color3f();
+            vertices = last_labeled_points.get_vertices();
+            labels = last_labeled_points.get_labels();
+            vertices_size = last_labeled_points.size();
+        }
+        catch (const std::exception& e)
+        {
+            LOG_ERROR("Failed to read labeled point cloud data: " << e.what());
+            return;
+        }
 
-            /* this segment actually renders the labeled pointcloud */
-            for (int i = 0; i < vertices_size; ++i)
-            {
-                // Set the vertex color from the label value
-                auto label = labels[i];
-                auto color = label_to_color3f[static_cast<rs2_point_cloud_label>(label)];
-                glColor3f(color.x, color.y, color.z);
+        auto label_to_color3f = labeled_point_cloud_utilities::get_label_to_color3f();
 
-                // Draw the vertex
-                rs2::vertex vtx = { vertices[i].x, vertices[i].y, vertices[i].z };
-                glVertex3fv(std::move(vtx));
-            }
+        glBegin(GL_POINTS);
+        /* this segment actually renders the labeled pointcloud */
+        for (size_t i = 0; i < vertices_size; ++i)
+        {
+            // Set the vertex color from the label value
+            auto label = labels[i];
+            auto color = label_to_color3f[static_cast<rs2_point_cloud_label>(label)];
+            glColor3f(color.x, color.y, color.z);
+
+            // Draw the vertex
+            rs2::vertex vtx = { vertices[i].x, vertices[i].y, vertices[i].z };
+            glVertex3fv(std::move(vtx));
         }
         glEnd();
 
@@ -4418,6 +4482,15 @@ namespace rs2
             return points;
         }
 
+        // The polygons come from metadata that only the safety product supplies; the D500
+        // Mapping stream has none. get_frame_metadata() throws on an unsupported value, and
+        // this runs per frame from inside a glBegin block, so probe before reading.
+        for( int i = 0; i < 8; ++i )
+        {
+            if( ! frame.supports_frame_metadata( static_cast< rs2_frame_metadata_value >( md_value + i ) ) )
+                return points;   // empty -> caller draws nothing
+        }
+
         // assuming all md values are subsequent 
         vertex x0 = { static_cast<float>(frame.get_frame_metadata(static_cast<rs2_frame_metadata_value>(md_value))) * scale_factor,
                         static_cast<float>(frame.get_frame_metadata(static_cast<rs2_frame_metadata_value>(md_value + 1))) * scale_factor, 0 };
@@ -4457,11 +4530,13 @@ namespace rs2
 
     void viewer_model::draw_zone_2d(Zone zone, const rect& draw_within, const frame& frame)
     {
-        glLineWidth(3.0f);
-        glBegin(GL_LINE_LOOP);
-
         auto MM_TO_CM_SCALE = 0.1f;  // coords are in mm, converts to cm
         auto zone_to_draw = init_zone(zone, frame, MM_TO_CM_SCALE);
+        if( zone_to_draw.empty() )
+            return;
+
+        glLineWidth(3.0f);
+        glBegin(GL_LINE_LOOP);
         set_polygon_color(zone);
 
         constexpr GLfloat width = 512; // range of Y values for polygons - -2.56 - +2.56 meters

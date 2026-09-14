@@ -26,7 +26,7 @@ Output Locations:
 
 Requirements:
   - Node.js 18+
-  - Python 3.13+
+  - Python 3.10+
   - Rust 1.56+
   - PyInstaller (pip install pyinstaller)
 
