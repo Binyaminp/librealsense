@@ -4,7 +4,7 @@
 #pragma once
 
 #include "assistant-chat-client.h"
-#include "assistant-markdown.h"
+#include "assistant-image-cache.h"
 #include "rendering.h"
 #include <rsutils/concurrency/concurrency.h>
 #include <vector>
@@ -39,7 +39,6 @@ namespace rs2
         std::chrono::system_clock::time_point created_time = std::chrono::system_clock::now();
         double latency_ms = 0.0;
         int reaction = 0; // 1 = thumbs up, -1 = thumbs down, 0 = none sent
-        assistant_detail::markdown_cache md_cache; // draw_markdown_body()'s per-message parse cache
     };
 
     // Floating "Ask RealSenseAI" launcher + chat panel. Mirrors notification_model's dispatch-queue

@@ -10,6 +10,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include "imgui-fonts-karla.hpp"
+#include "imgui-fonts-karla-bold.hpp"
 #include "imgui-fonts-fontawesome.hpp"
 #include "imgui-fonts-monofont.hpp"
 #include <realsense_imgui.h>
@@ -39,7 +40,7 @@ namespace rs2
         ~disable_guard() { end(); }
     };
 
-    void imgui_easy_theming(ImFont*& font_dynamic, ImFont*& font_18, ImFont*& monofont, int& font_size)
+    void imgui_easy_theming(ImFont*& font_dynamic, ImFont*& font_18, ImFont*& monofont, ImFont*& font_bold, int& font_size)
     {
         ImGuiStyle& style = ImGui::GetStyle();
 
@@ -95,6 +96,27 @@ namespace rs2
             config_glyphs.OversampleV = OVERSAMPLE;
             config_glyphs.OversampleH = OVERSAMPLE;
             monofont = io.Fonts->AddFontFromMemoryCompressedTTF(font_awesome_compressed_data,
+                font_awesome_compressed_size, 14.f, &config_glyphs, icons_ranges);
+        }
+
+        // Load bold font (for **strong** markdown emphasis). Embedded as a raw, uncompressed TTF
+        // rather than through the binary_to_compressed_c pipeline the other fonts use - that tool
+        // isn't vendored in this repo - so AddFontFromMemoryTTF is used instead of the *Compressed
+        // variant; FontDataOwnedByAtlas is cleared since karla_bold_data is a static array, not a
+        // heap buffer for ImGui to free.
+        {
+            ImFontConfig config_words;
+            config_words.OversampleV = OVERSAMPLE;
+            config_words.OversampleH = OVERSAMPLE;
+            config_words.FontDataOwnedByAtlas = false;
+            font_bold = io.Fonts->AddFontFromMemoryTTF((void*)karla_bold_data, (int)karla_bold_size,
+                (float)font_size, &config_words);
+
+            ImFontConfig config_glyphs;
+            config_glyphs.MergeMode = true;
+            config_glyphs.OversampleV = OVERSAMPLE;
+            config_glyphs.OversampleH = OVERSAMPLE;
+            font_bold = io.Fonts->AddFontFromMemoryCompressedTTF(font_awesome_compressed_data,
                 font_awesome_compressed_size, 14.f, &config_glyphs, icons_ranges);
         }
 

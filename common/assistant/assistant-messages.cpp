@@ -140,7 +140,7 @@ namespace rs2
             {
                 std::weak_ptr<assistant_model> self = shared_from_this();
                 assistant::invoke_fn invoke = [self](std::function<void()> a) { if (auto s = self.lock()) s->invoke(a); };
-                assistant_detail::draw_markdown_body(win, msg.text, wrap_width, msg.md_cache, *_image_cache, invoke);
+                assistant_detail::draw_markdown_body(win, msg.text, wrap_width, *_image_cache, invoke);
 
                 if (!msg.citations.empty())
                 {
