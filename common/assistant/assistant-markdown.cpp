@@ -346,67 +346,42 @@ namespace rs2
                 }
             }
 
-            // Fully overridden rather than left as imgui_md's default: the base implementation
-            // hand-tracks column x-positions by watching where each row's own content happens to
-            // land, which drifts out of alignment across rows with uneven cell content. Routing
-            // through a real ImGui::BeginTable gives consistent column edges. Columns are sized to
-            // fit their content (SizingFixedFit) rather than stretched to the chat bubble's width -
-            // a real spec table easily has 6+ columns, and squeezing those into one bubble's width
-            // leaves each column too narrow to hold more than a couple of wrapped letters per line.
-            // ScrollX + a bounded outer width let a wide table scroll horizontally instead.
+            // Real ImGui::BeginTable, not imgui_md's own (which drifts columns out of alignment
+            // across rows). Wrapped in our own auto-height child rather than BeginTable's ScrollX,
+            // so a wide table scrolls horizontally without us guessing its height up front.
             void BLOCK_TABLE(const MD_BLOCK_TABLE_DETAIL* d, bool e) override
             {
                 if (e)
                 {
-                    // Whatever text immediately preceded the table may have left the cursor mid-line
-                    // (render_text() ends a run with SameLine(0,0) so adjacent inline content, like a
-                    // link followed by more text, keeps flowing on the same line) - force a fresh line
-                    // unconditionally so the table never starts by rendering next to trailing text.
-                    ImGui::NewLine();
-
-                    // ImGui::BeginTable's outer_size.y==0 means "auto-fit to content" ONLY without
-                    // ScrollX/ScrollY - with ScrollX on (needed so a wide table scrolls instead of
-                    // squeezing columns) it instead means "fill all remaining space in the parent",
-                    // which inside our auto-resizing message-body child fed back into that child's
-                    // own size and grew without bound. Estimate a real height from the row count
-                    // instead; ScrollY is a safety net in case a cell wraps taller than expected.
-                    //
-                    // Columns also get an explicit fixed width rather than being left to auto-fit:
-                    // imgui_md's render_text() always word-wraps to the CURRENT
-                    // GetContentRegionAvail().x, which - on the row where a column is first
-                    // populated - is whatever narrow width the column happened to already have, not
-                    // the width its content actually wants. That chicken-and-egg problem is what
-                    // made "Manipulation" wrap into "Manipu" / "lation" instead of the column
-                    // growing to fit it. A fixed per-column width sidesteps auto-fit entirely.
+                    ImGui::NewLine(); // trailing text may leave the cursor mid-line - see render_text()'s SameLine(0,0)
+                    ImGui::PushStyleColor(ImGuiCol_ChildBg, transparent);
+                    ImGui::BeginChild("##table_wrap", ImVec2(_wrap_width, 0.f),
+                        ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysAutoResize,
+                        ImGuiWindowFlags_HorizontalScrollbar);
+                    // Without ScrollX/ScrollY, BeginTable auto-fits height to content, but also
+                    // auto-fits WIDTH to the wrapping child unless given an explicit outer width -
+                    // which would silently shrink our fixed columns instead of scrolling them.
                     const float col_w = 130.f;
-                    const float line_h = ImGui::GetTextLineHeightWithSpacing();
-                    const float pad_y = ImGui::GetStyle().CellPadding.y * 2.f;
-                    // Both header and body rows are budgeted for up to 2 wrapped lines - header
-                    // cells wrap now too (see the _in_table_header comment below), so a long column
-                    // label can just as easily need a second line as a body cell can.
-                    float table_h = (line_h * 2.f + pad_y) * (float)(d->head_row_count + d->body_row_count);
-
                     ImGui::BeginTable("md_table", (int)d->col_count,
-                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit |
-                        ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY,
-                        ImVec2(_wrap_width, table_h));
+                        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit,
+                        ImVec2((float)d->col_count * col_w, 0.f));
+                    // Fixed column width, not auto-fit: render_text() wraps to a column's CURRENT
+                    // width, which on its first row is whatever a shorter neighboring cell left it at.
                     for (unsigned i = 0; i < d->col_count; i++)
                         ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthFixed, col_w);
                 }
                 else
                 {
                     ImGui::EndTable();
+                    ImGui::EndChild();
+                    ImGui::PopStyleColor();
                     ImGui::NewLine();
                 }
             }
 
-            // Deliberately tracked in our own flag rather than base's m_is_table_header: the private
-            // render_text() checks m_is_table_header too, and skips word-wrapping entirely for
-            // header cells (always renders the full run unwrapped) - fine for imgui_md's own
-            // manually-positioned table columns, but against our fixed-width columns that just
-            // clips long header labels ("Language/Wrappe..."). Keeping m_is_table_header itself
-            // untouched makes header cells wrap through the same GetContentRegionAvail() path body
-            // cells already use correctly; _in_table_header still lets get_font() bold the row.
+            // Tracked separately from base's m_is_table_header: that flag also disables word-wrap
+            // in the private render_text(), fine for imgui_md's own table but clips our fixed-width
+            // columns' header text instead of wrapping it.
             void BLOCK_THEAD(bool e) override
             {
                 _in_table_header = e;
@@ -414,13 +389,9 @@ namespace rs2
                 else ImGui::PopFont();
             }
 
-            // Deliberately not tracked (base's m_is_table_body, if set, makes the private
-            // render_text() compute cell wrap-width from the now-unused m_table_col_pos/
-            // m_table_last_pos bookkeeping instead of the current column's real content region,
-            // which - since those are never populated by our BeginTable-based overrides above -
-            // wraps every body cell after a single character. Leaving it false makes render_text()
-            // fall back to ImGui::GetContentRegionAvail().x, which inside a table cell already
-            // reports that column's actual width, wrapping correctly with no bookkeeping needed.
+            // Deliberately left unset: base's m_is_table_body makes render_text() use column-
+            // position bookkeeping we never populate (our BeginTable overrides bypass it), wrapping
+            // body cells after a single character instead of to the column's real width.
             void BLOCK_TBODY(bool) override {}
 
             void BLOCK_TR(bool e) override
