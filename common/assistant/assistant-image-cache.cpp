@@ -2,8 +2,7 @@
 // Copyright(c) 2026 RealSense, Inc. All Rights Reserved.
 
 #ifdef ENABLE_AI_ASSISTANT
-#include <curl/curl.h>
-#include <curl/easy.h>
+#include "../http/curl-wrapper.h"
 #include <thread>
 #endif
 
@@ -28,20 +27,67 @@ namespace rs2
 
 #else
 
-        static const long CONNECT_TIMEOUT_SEC = 5L; // time allowed to establish the connection
         static const long IMAGE_FETCH_TIMEOUT_SEC = 20L; // overall cap for fetching a markdown image/gif
         static const size_t MAX_IMAGE_BYTES = 20 * 1024 * 1024; // guards a huge/misbehaving image URL
 
         namespace
         {
-            size_t append_to_buffer(char* ptr, size_t size, size_t nmemb, void* userdata)
+            // Transfer + decode only, no cache/UI knowledge - an empty result (frames.empty())
+            // covers every failure (transfer error, size cap exceeded, decode failure) uniformly.
+            assistant_detail::decoded_image fetch_and_decode(const std::string& url)
             {
-                auto* buf = static_cast<std::vector<uint8_t>*>(userdata);
-                size_t n = size * nmemb;
-                if (buf->size() + n > MAX_IMAGE_BYTES)
-                    return 0; // abort the transfer: response grew past the size cap
-                buf->insert(buf->end(), ptr, ptr + n);
-                return n;
+                std::vector<uint8_t> bytes;
+                http::curl_wrapper curl;
+                bool ok = curl.get(url, [&bytes](const char* data, size_t len) {
+                    if (bytes.size() + len > MAX_IMAGE_BYTES)
+                        return false; // abort the transfer: response grew past the size cap
+                    bytes.insert(bytes.end(), data, data + len);
+                    return true;
+                }, {}, false, IMAGE_FETCH_TIMEOUT_SEC);
+
+                return ok ? assistant_detail::decode_image_bytes(bytes.data(), bytes.size())
+                          : assistant_detail::decoded_image();
+            }
+        }
+
+        // On invoke() timing out (UI thread didn't drain in time), one best-effort retry to mark
+        // the entry failed instead of leaving it "loading" forever with no retry/fallback.
+        void assistant_image_cache::apply_fetch_result(std::shared_ptr<assistant_image_cache> me,
+            const std::string& url, invoke_fn invoke, assistant_detail::decoded_image decoded)
+        {
+            try
+            {
+                invoke([me, url, decoded = std::move(decoded)]() {
+                    auto found = me->_entries.find(url);
+                    if (found == me->_entries.end())
+                        return; // shouldn't happen; defensive
+                    auto& entry = found->second;
+
+                    if (decoded.frames.empty())
+                    {
+                        entry.state = image_load_state::failed;
+                        return;
+                    }
+
+                    entry.width = decoded.width;
+                    entry.height = decoded.height;
+                    for (auto&& frame : decoded.frames)
+                    {
+                        auto tex = std::unique_ptr<texture_buffer>(new texture_buffer());
+                        tex->upload_image(decoded.width, decoded.height, (void*)frame.rgba.data());
+                        entry.frame_textures.push_back(std::move(tex));
+                        entry.frame_delays_ms.push_back(frame.delay_ms);
+                    }
+                    entry.state = image_load_state::loaded;
+                });
+            }
+            catch (const std::exception&)
+            {
+                safe_invoke(invoke, [me, url]() {
+                    auto found = me->_entries.find(url);
+                    if (found != me->_entries.end() && found->second.state == image_load_state::loading)
+                        found->second.state = image_load_state::failed;
+                });
             }
         }
 
@@ -60,67 +106,8 @@ namespace rs2
         {
             auto me = shared_from_this();
             std::thread t([me, url, invoke]() {
-                std::vector<uint8_t> bytes;
-                bool ok = false;
-                if (auto* curl = curl_easy_init())
-                {
-                    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-                    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SEC);
-                    curl_easy_setopt(curl, CURLOPT_TIMEOUT, IMAGE_FETCH_TIMEOUT_SEC);
-                    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-                    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-                    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_to_buffer);
-                    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &bytes);
-
-                    auto res = curl_easy_perform(curl);
-                    long status = 0;
-                    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-                    curl_easy_cleanup(curl);
-                    ok = (res == CURLE_OK && status == 200);
-                }
-
-                assistant_detail::decoded_image decoded;
-                if (ok)
-                    decoded = assistant_detail::decode_image_bytes(bytes.data(), bytes.size());
-
-                try
-                {
-                    invoke([me, url, decoded = std::move(decoded)]() {
-                        auto found = me->_entries.find(url);
-                        if (found == me->_entries.end())
-                            return; // shouldn't happen; defensive
-                        auto& entry = found->second;
-
-                        if (decoded.frames.empty())
-                        {
-                            entry.state = image_load_state::failed;
-                            return;
-                        }
-
-                        entry.width = decoded.width;
-                        entry.height = decoded.height;
-                        for (auto&& frame : decoded.frames)
-                        {
-                            auto tex = std::unique_ptr<texture_buffer>(new texture_buffer());
-                            tex->upload_image(decoded.width, decoded.height, (void*)frame.rgba.data());
-                            entry.frame_textures.push_back(std::move(tex));
-                            entry.frame_delays_ms.push_back(frame.delay_ms);
-                        }
-                        entry.state = image_load_state::loaded;
-                    });
-                }
-                catch (const std::exception&)
-                {
-                    // invoke() timed out (UI thread didn't drain in time) - the closure above never
-                    // ran, so the entry would stay "loading" forever with no retry/fallback. One
-                    // best-effort retry to mark it failed instead, still routed through invoke() so
-                    // _entries is only ever mutated from the UI thread.
-                    safe_invoke(invoke, [me, url]() {
-                        auto found = me->_entries.find(url);
-                        if (found != me->_entries.end() && found->second.state == image_load_state::loading)
-                            found->second.state = image_load_state::failed;
-                    });
-                }
+                auto decoded = fetch_and_decode(url);
+                apply_fetch_result(me, url, invoke, std::move(decoded));
             });
             t.detach();
         }

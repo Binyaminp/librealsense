@@ -9,6 +9,8 @@
 #include <memory>
 #include <unordered_map>
 
+namespace rs2 { namespace assistant_detail { struct decoded_image; } }
+
 namespace rs2
 {
     class texture_buffer;
@@ -37,6 +39,12 @@ namespace rs2
 
         private:
             void fetch(const std::string& url, invoke_fn invoke);
+
+            // Applies a finished fetch to the cache entry - always via invoke(), so _entries is
+            // only ever mutated from the UI thread. Static since it's called with `me` already
+            // captured as a shared_ptr, not through a live `this`.
+            static void apply_fetch_result(std::shared_ptr<assistant_image_cache> me, const std::string& url,
+                invoke_fn invoke, assistant_detail::decoded_image decoded);
 
             std::unordered_map<std::string, cached_image> _entries;
         };
