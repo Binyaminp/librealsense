@@ -274,8 +274,8 @@ namespace rs2
         struct assistant_markdown_renderer : public imgui_md
         {
             assistant_markdown_renderer(ux_window& win, assistant::assistant_image_cache& images,
-                const assistant::invoke_fn& invoke, float wrap_width)
-                : _win(win), _images(images), _invoke(invoke), _wrap_width(wrap_width) {}
+                const assistant::invoke_fn& invoke, float wrap_width, int& table_index)
+                : _win(win), _images(images), _invoke(invoke), _wrap_width(wrap_width), _table_index(table_index) {}
 
         protected:
             ImFont* get_font() const override
@@ -494,7 +494,10 @@ namespace rs2
             float _wrap_width;
             bool _in_table_header = false;
             bool _table_open = false;
-            int _table_index = 0;
+            // Reference, not owned: shared across every renderer instance draw_markdown_body()
+            // constructs for one message (a fresh instance per prose segment between fenced code
+            // blocks), so table IDs keep accumulating instead of restarting at 0 per segment.
+            int& _table_index;
             ImVec2 _code_block_start;
         };
     }
@@ -517,12 +520,13 @@ namespace rs2
             auto fences = find_fenced_code_blocks(text);
             size_t pos = 0;
             int block_index = 0;
+            int table_index = 0; // shared across every prose segment, so table IDs don't reset per segment
             for (auto&& f : fences)
             {
                 if (f.block_start > pos)
                 {
                     std::string prose = text.substr(pos, f.block_start - pos);
-                    assistant_markdown_renderer renderer(win, images, invoke, wrap_width);
+                    assistant_markdown_renderer renderer(win, images, invoke, wrap_width, table_index);
                     renderer.print(prose.data(), prose.data() + prose.size());
                 }
                 ImGui::PushID(block_index++);
@@ -533,7 +537,7 @@ namespace rs2
             if (pos < text.size())
             {
                 std::string prose = text.substr(pos);
-                assistant_markdown_renderer renderer(win, images, invoke, wrap_width);
+                assistant_markdown_renderer renderer(win, images, invoke, wrap_width, table_index);
                 renderer.print(prose.data(), prose.data() + prose.size());
             }
 
