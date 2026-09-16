@@ -362,17 +362,18 @@ namespace rs2
                     // auto-fits WIDTH to the wrapping child unless given an explicit outer width -
                     // which would silently shrink our fixed columns instead of scrolling them.
                     const float col_w = 130.f;
-                    ImGui::BeginTable("md_table", (int)d->col_count,
+                    // BeginTable can fail (e.g. window clipped) - EndTable() must only be called,
+                    // and no table functions submitted, when it returned true.
+                    _table_open = ImGui::BeginTable("md_table", (int)d->col_count,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit,
                         ImVec2((float)d->col_count * col_w, 0.f));
-                    // Fixed column width, not auto-fit: render_text() wraps to a column's CURRENT
-                    // width, which on its first row is whatever a shorter neighboring cell left it at.
-                    for (unsigned i = 0; i < d->col_count; i++)
-                        ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthFixed, col_w);
+                    if (_table_open)
+                        for (unsigned i = 0; i < d->col_count; i++)
+                            ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthFixed, col_w);
                 }
                 else
                 {
-                    ImGui::EndTable();
+                    if (_table_open) ImGui::EndTable();
                     ImGui::EndChild();
                     ImGui::PopStyleColor();
                     ImGui::NewLine();
@@ -396,14 +397,14 @@ namespace rs2
 
             void BLOCK_TR(bool e) override
             {
-                if (e) ImGui::TableNextRow();
+                if (e && _table_open) ImGui::TableNextRow();
             }
 
             void BLOCK_TH(const MD_BLOCK_TD_DETAIL* d, bool e) override { BLOCK_TD(d, e); }
 
             void BLOCK_TD(const MD_BLOCK_TD_DETAIL*, bool e) override
             {
-                if (e) ImGui::TableNextColumn();
+                if (e && _table_open) ImGui::TableNextColumn();
             }
 
             // Fully overridden (rather than just get_image()) so a still-loading or failed fetch has
@@ -485,6 +486,7 @@ namespace rs2
             const assistant::invoke_fn& _invoke;
             float _wrap_width;
             bool _in_table_header = false;
+            bool _table_open = false;
             ImVec2 _code_block_start;
         };
     }
