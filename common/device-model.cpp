@@ -103,18 +103,13 @@ namespace rs2
                 font_awesome_compressed_size, 14.f, &config_glyphs, icons_ranges);
         }
 
-        // Load bold font (for **strong** markdown emphasis). Embedded as a raw, uncompressed TTF
-        // rather than through the binary_to_compressed_c pipeline the other fonts use - that tool
-        // isn't vendored in this repo - so AddFontFromMemoryTTF is used instead of the *Compressed
-        // variant; FontDataOwnedByAtlas is cleared since karla_bold_data is a static array, not a
-        // heap buffer for ImGui to free.
+        // Load bold font (for **strong** markdown emphasis).
         {
             ImFontConfig config_words;
             config_words.OversampleV = OVERSAMPLE;
             config_words.OversampleH = OVERSAMPLE;
-            config_words.FontDataOwnedByAtlas = false;
-            font_bold = io.Fonts->AddFontFromMemoryTTF((void*)karla_bold_data, (int)karla_bold_size,
-                (float)font_size, &config_words);
+            font_bold = io.Fonts->AddFontFromMemoryCompressedTTF(karla_bold_compressed_data,
+                karla_bold_compressed_size, (float)font_size, &config_words);
 
             ImFontConfig config_glyphs;
             config_glyphs.MergeMode = true;
