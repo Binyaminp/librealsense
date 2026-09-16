@@ -80,29 +80,44 @@ namespace rs2
                 if (ok)
                     decoded = assistant_detail::decode_image_bytes(bytes.data(), bytes.size());
 
-                safe_invoke(invoke, [me, url, decoded = std::move(decoded)]() {
-                    auto found = me->_entries.find(url);
-                    if (found == me->_entries.end())
-                        return; // shouldn't happen; defensive
-                    auto& entry = found->second;
+                try
+                {
+                    invoke([me, url, decoded = std::move(decoded)]() {
+                        auto found = me->_entries.find(url);
+                        if (found == me->_entries.end())
+                            return; // shouldn't happen; defensive
+                        auto& entry = found->second;
 
-                    if (decoded.frames.empty())
-                    {
-                        entry.state = image_load_state::failed;
-                        return;
-                    }
+                        if (decoded.frames.empty())
+                        {
+                            entry.state = image_load_state::failed;
+                            return;
+                        }
 
-                    entry.width = decoded.width;
-                    entry.height = decoded.height;
-                    for (auto&& frame : decoded.frames)
-                    {
-                        auto tex = std::unique_ptr<texture_buffer>(new texture_buffer());
-                        tex->upload_image(decoded.width, decoded.height, (void*)frame.rgba.data());
-                        entry.frame_textures.push_back(std::move(tex));
-                        entry.frame_delays_ms.push_back(frame.delay_ms);
-                    }
-                    entry.state = image_load_state::loaded;
-                });
+                        entry.width = decoded.width;
+                        entry.height = decoded.height;
+                        for (auto&& frame : decoded.frames)
+                        {
+                            auto tex = std::unique_ptr<texture_buffer>(new texture_buffer());
+                            tex->upload_image(decoded.width, decoded.height, (void*)frame.rgba.data());
+                            entry.frame_textures.push_back(std::move(tex));
+                            entry.frame_delays_ms.push_back(frame.delay_ms);
+                        }
+                        entry.state = image_load_state::loaded;
+                    });
+                }
+                catch (const std::exception&)
+                {
+                    // invoke() timed out (UI thread didn't drain in time) - the closure above never
+                    // ran, so the entry would stay "loading" forever with no retry/fallback. One
+                    // best-effort retry to mark it failed instead, still routed through invoke() so
+                    // _entries is only ever mutated from the UI thread.
+                    safe_invoke(invoke, [me, url]() {
+                        auto found = me->_entries.find(url);
+                        if (found != me->_entries.end() && found->second.state == image_load_state::loading)
+                            found->second.state = image_load_state::failed;
+                    });
+                }
             });
             t.detach();
         }
