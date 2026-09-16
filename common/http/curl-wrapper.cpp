@@ -20,8 +20,12 @@ namespace rs2
         // Dummy - built without libcurl.
         curl_wrapper::curl_wrapper() : _curl( nullptr ) {}
         curl_wrapper::~curl_wrapper() {}
-        bool curl_wrapper::get( const std::string &, const write_func &, const progress_func &, bool ) { return false; }
-        bool curl_wrapper::post_json( const std::string &, const std::string &, const std::string & ) { return false; }
+        bool curl_wrapper::get( const std::string &, const write_func &, const progress_func &, bool, long ) { return false; }
+        bool curl_wrapper::post_json( const std::string &, const std::string &, const std::string &, long * out_http_status )
+        {
+            if( out_http_status ) *out_http_status = 0;
+            return false;
+        }
 
 #else
 
@@ -78,7 +82,7 @@ namespace rs2
         }
 
         bool curl_wrapper::get( const std::string & url, const write_func & on_data,
-                                const progress_func & on_progress, bool insecure )
+                                const progress_func & on_progress, bool insecure, long overall_timeout_sec )
         {
             if( ! _curl )
                 return false;
@@ -86,6 +90,7 @@ namespace rs2
 
             curl_easy_setopt( curl, CURLOPT_URL, url.c_str() );
             curl_easy_setopt( curl, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SEC );
+            curl_easy_setopt( curl, CURLOPT_TIMEOUT, overall_timeout_sec );  // 0 = no cap (curl default)
             curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 1L );  // follow HTTP 3xx redirects
             curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1L );
             curl_easy_setopt( curl, CURLOPT_FAILONERROR, 1L );     // fail on HTTP >= 400
@@ -118,8 +123,10 @@ namespace rs2
             return true;
         }
 
-        bool curl_wrapper::post_json( const std::string & url, const std::string & body, const std::string & extra_header )
+        bool curl_wrapper::post_json( const std::string & url, const std::string & body, const std::string & extra_header,
+                                       long * out_http_status )
         {
+            if( out_http_status ) *out_http_status = 0;
             if( ! _curl )
                 return false;
             CURL * curl = static_cast< CURL * >( _curl );
@@ -153,6 +160,13 @@ namespace rs2
             bool ok = ( res == CURLE_OK );
             if( ! ok )
                 LOG_ERROR( "HTTP POST to " << url << " failed: " << curl_easy_strerror( res ) );
+
+            if( out_http_status )
+            {
+                long status = 0;
+                curl_easy_getinfo( curl, CURLINFO_RESPONSE_CODE, &status );
+                *out_http_status = status;
+            }
 
             curl_slist_free_all( headers );
             return ok;

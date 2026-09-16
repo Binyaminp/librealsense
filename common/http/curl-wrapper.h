@@ -31,13 +31,19 @@ namespace rs2
             bool valid() const { return _curl != nullptr; }
 
             // GET `url`, streaming the body to `on_data`. Optional progress callback. `insecure` skips
-            // SSL peer/host verification. Follows redirects; fails on HTTP >= 400. true on success.
+            // SSL peer/host verification. Follows redirects; fails on HTTP >= 400. `overall_timeout_sec`,
+            // when > 0, caps the whole transfer (default 0 = no cap, only the connect phase is capped).
+            // true on success.
             bool get( const std::string & url, const write_func & on_data,
-                      const progress_func & on_progress = progress_func(), bool insecure = false );
+                      const progress_func & on_progress = progress_func(), bool insecure = false,
+                      long overall_timeout_sec = 0 );
 
             // POST `body` to `url` as application/json (response body discarded). `extra_header`,
-            // when given, is sent verbatim as an additional "Name: value" header. true on success.
-            bool post_json( const std::string & url, const std::string & body, const std::string & extra_header = {} );
+            // when given, is sent verbatim as an additional "Name: value" header. `out_http_status`,
+            // when given, receives the HTTP response status (0 if none was ever received, e.g. a
+            // connect failure) regardless of success/failure. true on success.
+            bool post_json( const std::string & url, const std::string & body, const std::string & extra_header = {},
+                             long * out_http_status = nullptr );
 
         private:
             void * _curl;

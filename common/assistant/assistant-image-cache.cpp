@@ -5,7 +5,6 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <thread>
-#include "assistant-chat-config.h"
 #endif
 
 #include "assistant-image-cache.h"
@@ -28,6 +27,10 @@ namespace rs2
         void assistant_image_cache::fetch(const std::string&, invoke_fn) {}
 
 #else
+
+        static const long CONNECT_TIMEOUT_SEC = 5L; // time allowed to establish the connection
+        static const long IMAGE_FETCH_TIMEOUT_SEC = 20L; // overall cap for fetching a markdown image/gif
+        static const size_t MAX_IMAGE_BYTES = 20 * 1024 * 1024; // guards a huge/misbehaving image URL
 
         namespace
         {

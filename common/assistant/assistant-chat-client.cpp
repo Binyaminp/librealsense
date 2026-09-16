@@ -5,7 +5,7 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 #include <thread>
-#include "assistant-chat-config.h"
+#include "../http/curl-wrapper.h"
 #endif
 
 #include "assistant-chat-client.h"
@@ -37,7 +37,10 @@ namespace rs2
 
 #else
 
+        static const char* BASE_URL = "https://rs-chat-hnd6gchgesc9fre6.a02.azurefd.net";
+        static const long CONNECT_TIMEOUT_SEC = 5L; // time allowed to establish the connection
         static const long REQUEST_TIMEOUT_SEC = 120L; // overall cap; SSE answers can stream for a while
+        static const long ONE_SHOT_TIMEOUT_SEC = 10L; // overall cap for check_health()/send_reaction()
 
         namespace
         {
@@ -199,6 +202,49 @@ namespace rs2
                 return; // on_curl_data already reported this (or it's a silent user cancel)
 
             report_transfer_result(res, http_status, invoke, on_error);
+        }
+
+        void assistant_chat_client::check_health(invoke_fn invoke, std::function<void(bool)> on_result)
+        {
+            auto me = shared_from_this();
+            std::thread t([me, invoke, on_result]() {
+                http::curl_wrapper curl;
+                bool healthy = curl.get(std::string(BASE_URL) + "/api/health",
+                    [](const char*, size_t) { return true; }, {}, false, ONE_SHOT_TIMEOUT_SEC);
+                safe_invoke(invoke, [on_result, healthy]() { on_result(healthy); });
+            });
+            t.detach();
+        }
+
+        void assistant_chat_client::send_reaction(const std::string& conversation_id, int value,
+            invoke_fn invoke, error_callback on_error)
+        {
+            auto me = shared_from_this();
+            std::thread t([me, conversation_id, value, invoke, on_error]() {
+                try
+                {
+                    rsutils::json body_json;
+                    body_json["conversationId"] = conversation_id;
+                    body_json["value"] = value;
+
+                    http::curl_wrapper curl;
+                    long status = 0;
+                    bool ok = curl.post_json(std::string(BASE_URL) + "/api/reactions",
+                        body_json.dump(), "X-RS-Integration: viewer", &status);
+                    if (!ok)
+                    {
+                        std::string message_text = rsutils::string::from()
+                            << "Couldn't send feedback (HTTP " << status << ").";
+                        safe_invoke(invoke, [on_error, message_text]() { on_error(message_text); });
+                    }
+                }
+                catch (const std::exception& ex)
+                {
+                    std::string what = ex.what();
+                    safe_invoke(invoke, [on_error, what]() { on_error(what); });
+                }
+            });
+            t.detach();
         }
 #endif
     }

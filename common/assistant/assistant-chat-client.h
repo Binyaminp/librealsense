@@ -15,9 +15,8 @@ namespace rs2
         // Streams one POST /api/chat/stream request on a detached background thread, parsing the
         // response's SSE incrementally. Has no ImGui/UI knowledge - every event/error is delivered
         // through the caller-supplied `invoke`, so callbacks always run where `invoke` marshals them.
-
-        // check_health()/send_reaction() are unrelated one-shot requests, defined in
-        // assistant-chat-http.cpp; the streaming lifecycle here (send/cancel/run) owns _curl/_busy.
+        // check_health()/send_reaction() are unrelated one-shot requests via common/http's
+        // curl_wrapper, independent of the streaming lifecycle's own _curl/_busy below.
         class assistant_chat_client : public std::enable_shared_from_this<assistant_chat_client>
         {
         public:
