@@ -208,10 +208,17 @@ namespace rs2
         {
             auto me = shared_from_this();
             std::thread t([me, invoke, on_result]() {
-                http::curl_wrapper curl;
-                bool healthy = curl.get(std::string(BASE_URL) + "/api/health",
-                    [](const char*, size_t) { return true; }, {}, false, ONE_SHOT_TIMEOUT_SEC);
-                safe_invoke(invoke, [on_result, healthy]() { on_result(healthy); });
+                try
+                {
+                    http::curl_wrapper curl;
+                    bool healthy = curl.get(std::string(BASE_URL) + "/api/health",
+                        [](const char*, size_t) { return true; }, {}, false, ONE_SHOT_TIMEOUT_SEC);
+                    safe_invoke(invoke, [on_result, healthy]() { on_result(healthy); });
+                }
+                catch (...)
+                {
+                    safe_invoke(invoke, [on_result]() { on_result(false); }); // an exception is a failed check
+                }
             });
             t.detach();
         }
@@ -242,6 +249,10 @@ namespace rs2
                 {
                     std::string what = ex.what();
                     safe_invoke(invoke, [on_error, what]() { on_error(what); });
+                }
+                catch (...)
+                {
+                    safe_invoke(invoke, [on_error]() { on_error("Unknown error while sending feedback."); });
                 }
             });
             t.detach();
