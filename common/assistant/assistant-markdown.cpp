@@ -353,9 +353,16 @@ namespace rs2
             {
                 if (e)
                 {
+                    // IDs carry a per-message table index - a message with 2+ tables would otherwise
+                    // have every table share one ImGui ID, causing scroll/layout state conflicts.
+                    char wrap_id[32], table_id[32];
+                    snprintf(wrap_id, sizeof(wrap_id), "##table_wrap_%d", _table_index);
+                    snprintf(table_id, sizeof(table_id), "md_table_%d", _table_index);
+                    _table_index++;
+
                     ImGui::NewLine(); // trailing text may leave the cursor mid-line - see render_text()'s SameLine(0,0)
                     ImGui::PushStyleColor(ImGuiCol_ChildBg, transparent);
-                    ImGui::BeginChild("##table_wrap", ImVec2(_wrap_width, 0.f),
+                    ImGui::BeginChild(wrap_id, ImVec2(_wrap_width, 0.f),
                         ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysAutoResize,
                         ImGuiWindowFlags_HorizontalScrollbar);
                     // Without ScrollX/ScrollY, BeginTable auto-fits height to content, but also
@@ -364,7 +371,7 @@ namespace rs2
                     const float col_w = 130.f;
                     // BeginTable can fail (e.g. window clipped) - EndTable() must only be called,
                     // and no table functions submitted, when it returned true.
-                    _table_open = ImGui::BeginTable("md_table", (int)d->col_count,
+                    _table_open = ImGui::BeginTable(table_id, (int)d->col_count,
                         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit,
                         ImVec2((float)d->col_count * col_w, 0.f));
                     if (_table_open)
@@ -487,6 +494,7 @@ namespace rs2
             float _wrap_width;
             bool _in_table_header = false;
             bool _table_open = false;
+            int _table_index = 0;
             ImVec2 _code_block_start;
         };
     }
