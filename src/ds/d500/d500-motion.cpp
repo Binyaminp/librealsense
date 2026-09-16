@@ -18,6 +18,7 @@
 #include "ds/ds-options.h"
 #include "ds/ds-private.h"
 #include "d500-info.h"
+#include "d500-options.h"
 #include "stream.h"
 #include "proc/motion-transform.h"
 #include "proc/auto-exposure-processor.h"
@@ -167,6 +168,25 @@ namespace librealsense
 
         motion_ep->register_option(RS2_OPTION_GLOBAL_TIME_ENABLED, enable_global_time_option);
 
+        std::shared_ptr< option > gyro_sensitivity_option;
+        try
+        {
+            auto candidate = std::make_shared< d500_mipi_gyro_sensitivity_option >( raw_motion_ep );
+            const auto range = candidate->get_range();
+            if( range.min == 0.f && range.max == 4.f && range.step == 1.f )
+            {
+                gyro_sensitivity_option = candidate;
+                motion_ep->register_option( RS2_OPTION_GYRO_SENSITIVITY, candidate );
+            }
+            else
+                LOG_WARNING( "MIPI gyro sensitivity control has unexpected range ["
+                             << range.min << ", " << range.max << ", " << range.step << "]" );
+        }
+        catch( const std::exception & e )
+        {
+            LOG_WARNING( "MIPI gyro sensitivity control is unavailable: " << e.what() );
+        }
+
         // register pre-processing
         std::shared_ptr<enable_motion_correction> mm_correct_opt = nullptr;
 
@@ -184,12 +204,26 @@ namespace librealsense
         catch (...) {}
 
         double gyro_scale_factor = get_gyro_default_scale();
+        double accel_scale_factor = get_accel_default_scale();
         bool high_accuracy = is_imu_high_accuracy();
         motion_ep->register_processing_block(
             { {RS2_FORMAT_MOTION_XYZ32F} },
             { {RS2_FORMAT_MOTION_XYZ32F, RS2_STREAM_ACCEL}, {RS2_FORMAT_MOTION_XYZ32F, RS2_STREAM_GYRO} },
-            [&, mm_calib, high_accuracy, mm_correct_opt, gyro_scale_factor]()
-            { return std::make_shared< motion_to_accel_gyro >( mm_calib, mm_correct_opt, gyro_scale_factor, high_accuracy );
+            [mm_calib, high_accuracy, mm_correct_opt, gyro_scale_factor, accel_scale_factor, gyro_sensitivity_option]()
+            {
+                double scale = gyro_scale_factor;
+                if( gyro_sensitivity_option )
+                {
+                    try
+                    {
+                        scale = gyro_sensitivity_to_scale( gyro_sensitivity_option->query() );
+                    }
+                    catch( const std::exception & e )
+                    {
+                        LOG_WARNING( "Failed to read gyro sensitivity; using the fallback scale: " << e.what() );
+                    }
+                }
+                return std::make_shared< motion_to_accel_gyro >( mm_calib, mm_correct_opt, scale, accel_scale_factor, high_accuracy );
         });
 
         return motion_ep;

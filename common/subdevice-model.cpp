@@ -323,31 +323,6 @@ namespace rs2
             auto model = std::make_shared<embedded_filter_model>(
                 this, shared_filter->get_type(), shared_filter, viewer, error_message);
 
-            // Dual-color variants (0C01/0C04/0C07) share a depth+color sensor, so close-range runs depth-only.
-            std::string device_pid = s->supports( RS2_CAMERA_INFO_PRODUCT_ID )
-                                   ? s->get_info( RS2_CAMERA_INFO_PRODUCT_ID ) : "";
-            const bool is_dual_color = ( device_pid == "0C01" || device_pid == "0C04" || device_pid == "0C07" );
-            if( shared_filter->get_type() == RS2_EMBEDDED_FILTER_TYPE_CLOSE_RANGE && is_dual_color )
-            {
-                // Safe to capture this: the lambda lives in model which lives in embedded_filters,
-                // a member of this subdevice_model — so it cannot outlive its owner.
-                model->available_predicate = [this]()
-                {
-                    // Only a live color stream conflicts with close range; while stopped
-                    // the toggle stays available even if color is selected for the next run.
-                    if( !streaming )
-                        return true;
-                    for( auto& p : profiles )
-                    {
-                        auto it = stream_enabled.find( p.unique_id() );
-                        if( it != stream_enabled.end() && it->second && p.stream_type() == RS2_STREAM_COLOR )
-                            return false;
-                    }
-                    return true;
-                };
-                model->unavailable_tooltip = "Improved Close Range Depth cannot be activated while color streams are active";
-            }
-
             // is_multiple_resolutions_supported() reads the composite enabled state on the draw
             // path, so seed it here rather than waiting for the editor's first draw.
             model->sync_decimation_filter_dpp_state( error_message );

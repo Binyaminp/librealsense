@@ -93,10 +93,8 @@ namespace rs2
         bool _is_visible = true;
 
         // Optional predicate; null means always available. When false the enable toggle is
-        // grayed out. Set by the owner for filters with runtime constraints (e.g. close range,
-        // depth-only, must be off while color streams).
+        // grayed out (e.g. must be off while color streams), showing unavailable_tooltip (empty = none) on hover.
         std::function<bool()> available_predicate;
-        // Optional message shown when the toggle is unavailable; empty = none.
         std::string unavailable_tooltip;
 
         bool is_available() const { return !available_predicate || available_predicate(); }

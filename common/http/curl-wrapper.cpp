@@ -21,7 +21,7 @@ namespace rs2
         curl_wrapper::curl_wrapper() : _curl( nullptr ) {}
         curl_wrapper::~curl_wrapper() {}
         bool curl_wrapper::get( const std::string &, const write_func &, const progress_func &, bool ) { return false; }
-        bool curl_wrapper::post_json( const std::string &, const std::string & ) { return false; }
+        bool curl_wrapper::post_json( const std::string &, const std::string &, const std::string & ) { return false; }
 
 #else
 
@@ -118,13 +118,20 @@ namespace rs2
             return true;
         }
 
-        bool curl_wrapper::post_json( const std::string & url, const std::string & body )
+        bool curl_wrapper::post_json( const std::string & url, const std::string & body, const std::string & extra_header )
         {
             if( ! _curl )
                 return false;
             CURL * curl = static_cast< CURL * >( _curl );
 
             curl_slist * headers = curl_slist_append( nullptr, "Content-Type: application/json" );
+            if( headers && ! extra_header.empty() )
+            {
+                curl_slist * with_extra = curl_slist_append( headers, extra_header.c_str() );
+                if( ! with_extra )
+                    curl_slist_free_all( headers );  // append failed without taking ownership
+                headers = with_extra;
+            }
             if( ! headers )
             {
                 LOG_ERROR( "Failed to allocate curl headers" );

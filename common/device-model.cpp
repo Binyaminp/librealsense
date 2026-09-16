@@ -1053,6 +1053,11 @@ namespace rs2
 
     void device_model::check_for_device_updates(viewer_model& viewer, bool activated_by_user )
     {
+#ifndef CHECK_FOR_UPDATES
+        // BUILD_WITH_LIBCURL (and therefore the http_downloader this relies on) may still be on
+        // because of ENABLE_STATS; this flag stays the sole on/off switch for update checking.
+        return;
+#endif
         std::weak_ptr< updates_model > updates_model_protected( viewer.updates );
         std::weak_ptr< dev_updates_profile::update_profile > update_profile_protected(
             _updates_profile );
@@ -1189,7 +1194,6 @@ namespace rs2
                 auto error = e.what();
             }
         } );
-
     }
 
     float device_model::draw_device_panel(float panel_width,
@@ -3269,7 +3273,10 @@ namespace rs2
                             && ( ef_type == RS2_EMBEDDED_FILTER_TYPE_DECIMATION
                               || ef_type == RS2_EMBEDDED_FILTER_TYPE_TEMPORAL )
                             && is_perception_streaming();
-                        disable_guard dg( !pb_available || block_enable_while_perception );
+                        // Decimation is FW-side read-only while depth streams - lock both directions.
+                        const bool block_decimation_while_depth_streams = sub->streaming
+                            && ef_type == RS2_EMBEDDED_FILTER_TYPE_DECIMATION;
+                        disable_guard dg( !pb_available || block_enable_while_perception || block_decimation_while_depth_streams );
                         try
                         {
                             ImGui::PushFont(window.get_font());
@@ -3339,6 +3346,8 @@ namespace rs2
                                 RsImGui::CustomTooltip( "%s", pb->unavailable_tooltip.c_str() );
                             else if( block_enable_while_perception && ImGui::IsItemHovered( ImGuiHoveredFlags_AllowWhenDisabled ) )
                                 RsImGui::CustomTooltip( "Stop the perception stream before enabling this filter (cannot run together)" );
+                            else if( block_decimation_while_depth_streams && ImGui::IsItemHovered( ImGuiHoveredFlags_AllowWhenDisabled ) )
+                                RsImGui::CustomTooltip( "Stop streaming before toggling this filter (read-only while active)" );
 
                             ImGui::PopStyleColor(5);
                             ImGui::PopFont();

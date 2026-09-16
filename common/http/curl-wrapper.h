@@ -35,8 +35,9 @@ namespace rs2
             bool get( const std::string & url, const write_func & on_data,
                       const progress_func & on_progress = progress_func(), bool insecure = false );
 
-            // POST `body` to `url` as application/json (response body discarded). true on success.
-            bool post_json( const std::string & url, const std::string & body );
+            // POST `body` to `url` as application/json (response body discarded). `extra_header`,
+            // when given, is sent verbatim as an additional "Name: value" header. true on success.
+            bool post_json( const std::string & url, const std::string & body, const std::string & extra_header = {} );
 
         private:
             void * _curl;
