@@ -128,6 +128,13 @@ set(ASSISTANT_FILES
     "${CMAKE_CURRENT_LIST_DIR}/assistant/assistant-text-sanitizer.cpp"
     )
 
+# Vendored verbatim from upstream - suppress its warnings rather than patching it.
+if(MSVC)
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/../third-party/imgui_md/imgui_md.cpp" PROPERTIES COMPILE_OPTIONS "/W0")
+else()
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/../third-party/imgui_md/imgui_md.cpp" PROPERTIES COMPILE_OPTIONS "-w")
+endif()
+
 set(UTILITIES_FILES
     "${CMAKE_CURRENT_LIST_DIR}/utilities/imgui/wrap.h"
     "${CMAKE_CURRENT_LIST_DIR}/utilities/imgui/wrap.cpp"
