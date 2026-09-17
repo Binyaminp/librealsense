@@ -29,6 +29,7 @@ namespace librealsense
          {fourcc('R','W','1','6'), RS2_FORMAT_RAW16},
          {fourcc('B','Y','R','2'), RS2_FORMAT_RAW16},
          {fourcc('B','A','1','0'), RS2_FORMAT_RAW16},
+         {fourcc('G','R','1','6'), RS2_FORMAT_RAW16},
          {fourcc('M','4','2','0'), RS2_FORMAT_M420},
          {fourcc('N','V','1','2'), RS2_FORMAT_NV12}
     };
@@ -39,6 +40,7 @@ namespace librealsense
         {fourcc('R','W','1','6'), RS2_STREAM_COLOR},
         {fourcc('B','Y','R','2'), RS2_STREAM_COLOR},
         {fourcc('B','A','1','0'), RS2_STREAM_COLOR},
+        {fourcc('G','R','1','6'), RS2_STREAM_COLOR},
         {fourcc('M','J','P','G'), RS2_STREAM_COLOR},
         {fourcc('M','4','2','0'), RS2_STREAM_COLOR},
         {fourcc('N','V','1','2'), RS2_STREAM_COLOR}

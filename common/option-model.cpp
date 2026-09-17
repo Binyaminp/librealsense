@@ -251,21 +251,25 @@ bool option_model::is_enum() const
     if( range.step < 0.9f )
         return false;
 
+    // A value with no description is hidden for this device (see get_combo_labels), not evidence
+    // that the option isn't an enum — only bail if not a single value describes itself.
     for( auto i = range.min; i <= range.max; i += range.step )
     {
-        if( endpoint->get_option_value_description( opt, i ) == nullptr )
-            return false;
+        if( endpoint->get_option_value_description( opt, i ) != nullptr )
+            return true;
     }
-    return true;
+    return false;
 }
 
-std::vector< const char * > option_model::get_combo_labels( int * p_selected ) const
+std::vector< const char * > option_model::get_combo_labels( int * p_selected, std::vector< float > * p_values ) const
 {
     int selected = 0, counter = 0;
     std::vector< const char * > labels;
-    for( auto i = range.min; i <= range.max; i += range.step, counter++ )
+    for( auto i = range.min; i <= range.max; i += range.step )
     {
         auto label = endpoint->get_option_value_description( opt, i );
+        if( ! label )
+            continue;
 
         switch( value->type )
         {
@@ -281,6 +285,9 @@ std::vector< const char * > option_model::get_combo_labels( int * p_selected ) c
         }
 
         labels.push_back( label );
+        if( p_values )
+            p_values->push_back( i );
+        counter++;
     }
     if( p_selected )
         *p_selected = selected;
@@ -313,14 +320,15 @@ bool option_model::draw_combobox( notifications_model & model,
     ImGui::PushItemWidth( new_line ? ImGui::GetContentRegionAvail().x - 25 : 100.f );
 
     int selected;
-    std::vector< const char * > labels = get_combo_labels( &selected );
+    std::vector< float > values;
+    std::vector< const char * > labels = get_combo_labels( &selected, &values );
     ImGui::PushStyleColor( ImGuiCol_TextSelectedBg, { 1, 1, 1, 1 } );
 
     try
     {
         if( RsImGui::CustomComboBox( id.c_str(), &selected, labels.data(), static_cast< int >( labels.size() ) ) )
         {
-            float tmp_value = range.min + range.step * selected;
+            float tmp_value = values[selected];
             model.add_log( rsutils::string::from()
                            << "Setting " << opt << " to " << tmp_value << " (" << labels[selected] << ")" );
             write_value( tmp_value, error_message );

@@ -180,12 +180,10 @@ namespace librealsense
 
     void d500_depth_mapping::add_profile_tag_if_active( std::vector< tagged_profile > & tags ) const
     {
-        if( is_depth_mapping_active() )
+        if( is_depth_mapping_active() && _is_safety_layout )
         {
-            // The occupancy canvas is transposed between the two layouts.
-            const int width  = _is_safety_layout ? 256 : 320;
-            const int height = _is_safety_layout ? 320 : 256;
-            tags.push_back( { RS2_STREAM_OCCUPANCY, -1, width, height, RS2_FORMAT_Y8, 30,
+            // The occupancy canvas is transposed on this layout.
+            tags.push_back( { RS2_STREAM_OCCUPANCY, -1, 256, 320, RS2_FORMAT_Y8, 30,
                               profile_tag::PROFILE_TAG_SUPERSET | profile_tag::PROFILE_TAG_DEFAULT } );
         }
     }

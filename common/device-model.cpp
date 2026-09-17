@@ -2046,10 +2046,8 @@ namespace rs2
                         ///////////////////////////////////////////
                         //TODO: make this a member function
                         int selected;
-                        std::vector< const char * > labels = opt_model.get_combo_labels( &selected );
                         std::vector< float > counters;
-                        for (auto i = opt_model.range.min; i <= opt_model.range.max; i += opt_model.range.step)
-                            counters.push_back(i);
+                        std::vector< const char * > labels = opt_model.get_combo_labels( &selected, &counters );
                         ///////////////////////////////////////////
 
                         RsImGui_ScopePushStyleColor(ImGuiCol_TextSelectedBg, white);
