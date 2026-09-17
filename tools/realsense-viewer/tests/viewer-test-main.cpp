@@ -43,7 +43,7 @@ static void register_viewer_tests( ImGuiTestEngine *       engine,
             }
             catch( ... )
             {
-                try { IM_ERRORF( "test threw non-std exception" ); } catch( ... ) {}
+                try { IM_ERRORF( "%s", "test threw non-std exception" ); } catch( ... ) {}
             }
         };
     }
