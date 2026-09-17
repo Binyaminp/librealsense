@@ -57,6 +57,7 @@ namespace rs2
         ImGui::SetNextWindowSize({ g.btn_w, g.btn_h });
         ImGui::SetNextWindowBgAlpha(0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0)); // else default padding clips the button
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f); // else a square border frames the pill
         auto flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
             ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar;
         ImGui::Begin("##assistant_launcher", nullptr, flags);
@@ -103,7 +104,7 @@ namespace rs2
         }
 
         ImGui::End();
-        ImGui::PopStyleVar();
+        ImGui::PopStyleVar(2);
     }
 
     // A white disc with the RealSense pinwheel mark on top. The mark's texture is lazy-loaded once
