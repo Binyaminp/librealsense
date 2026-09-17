@@ -39,11 +39,17 @@ namespace rs2
                       long overall_timeout_sec = 0 );
 
             // POST `body` to `url` as application/json (response body discarded). `extra_header`,
-            // when given, is sent verbatim as an additional "Name: value" header. `out_http_status`,
-            // when given, receives the HTTP response status (0 if none was ever received, e.g. a
-            // connect failure) regardless of success/failure. true on success.
+            // when given, is an additional "Name: value" header. `out_http_status`, when given,
+            // receives the HTTP status (0 if none was ever received) regardless of success. true on success.
             bool post_json( const std::string & url, const std::string & body, const std::string & extra_header = {},
                              long * out_http_status = nullptr );
+
+            // Like post_json() but streams the body to `on_data` (same abort contract as get())
+            // instead of discarding it, and does NOT fail out on HTTP >= 400 - the caller checks
+            // `out_http_status` after the fact. `overall_timeout_sec` caps the transfer; `out_error_detail` gets a reason on failure.
+            bool post_stream( const std::string & url, const std::string & body, const write_func & on_data,
+                               const std::string & extra_header = {}, long overall_timeout_sec = 0,
+                               long * out_http_status = nullptr, std::string * out_error_detail = nullptr );
 
         private:
             void * _curl;

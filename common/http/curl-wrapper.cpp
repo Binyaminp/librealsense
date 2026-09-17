@@ -26,6 +26,12 @@ namespace rs2
             if( out_http_status ) *out_http_status = 0;
             return false;
         }
+        bool curl_wrapper::post_stream( const std::string &, const std::string &, const write_func &, const std::string &,
+                                         long, long * out_http_status, std::string * )
+        {
+            if( out_http_status ) *out_http_status = 0;
+            return false;
+        }
 
 #else
 
@@ -160,6 +166,65 @@ namespace rs2
             bool ok = ( res == CURLE_OK );
             if( ! ok )
                 LOG_ERROR( "HTTP POST to " << url << " failed: " << curl_easy_strerror( res ) );
+
+            if( out_http_status )
+            {
+                long status = 0;
+                curl_easy_getinfo( curl, CURLINFO_RESPONSE_CODE, &status );
+                *out_http_status = status;
+            }
+
+            curl_slist_free_all( headers );
+            return ok;
+        }
+
+        bool curl_wrapper::post_stream( const std::string & url, const std::string & body, const write_func & on_data,
+                                         const std::string & extra_header, long overall_timeout_sec,
+                                         long * out_http_status, std::string * out_error_detail )
+        {
+            if( out_http_status ) *out_http_status = 0;
+            if( out_error_detail ) out_error_detail->clear();
+            if( ! _curl )
+                return false;
+            CURL * curl = static_cast< CURL * >( _curl );
+
+            curl_slist * headers = curl_slist_append( nullptr, "Content-Type: application/json" );
+            if( headers && ! extra_header.empty() )
+            {
+                curl_slist * with_extra = curl_slist_append( headers, extra_header.c_str() );
+                if( ! with_extra )
+                    curl_slist_free_all( headers );  // append failed without taking ownership
+                headers = with_extra;
+            }
+            if( ! headers )
+            {
+                LOG_ERROR( "Failed to allocate curl headers" );
+                if( out_error_detail ) *out_error_detail = "Failed to allocate curl headers";
+                return false;
+            }
+
+            curl_easy_setopt( curl, CURLOPT_URL, url.c_str() );
+            curl_easy_setopt( curl, CURLOPT_POST, 1L );
+            curl_easy_setopt( curl, CURLOPT_POSTFIELDS, body.c_str() );
+            curl_easy_setopt( curl, CURLOPT_POSTFIELDSIZE, (long)body.size() );
+            curl_easy_setopt( curl, CURLOPT_HTTPHEADER, headers );
+            curl_easy_setopt( curl, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SEC );
+            curl_easy_setopt( curl, CURLOPT_TIMEOUT, overall_timeout_sec );  // 0 = no cap
+            curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1L );
+            curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 1L );
+            // Deliberately no CURLOPT_FAILONERROR: unlike get()/post_json(), the caller here wants
+            // the full response body (which may itself carry a server-sent error event) regardless
+            // of HTTP status, and decides what to do based on out_http_status after the fact.
+            curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, write_callback );
+            curl_easy_setopt( curl, CURLOPT_WRITEDATA, (void *)&on_data );
+
+            auto res = curl_easy_perform( curl );
+            bool ok = ( res == CURLE_OK );
+            if( ! ok )
+            {
+                LOG_ERROR( "HTTP POST (stream) to " << url << " failed: " << curl_easy_strerror( res ) );
+                if( out_error_detail ) *out_error_detail = curl_easy_strerror( res );
+            }
 
             if( out_http_status )
             {

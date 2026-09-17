@@ -2,10 +2,7 @@
 // Copyright(c) 2026 RealSense, Inc. All Rights Reserved.
 
 #ifdef ENABLE_AI_ASSISTANT
-#include <curl/curl.h>
-#include <curl/easy.h>
 #include <thread>
-#include "../http/curl-wrapper.h"
 #endif
 
 #include "assistant-chat-client.h"
@@ -17,8 +14,7 @@ namespace rs2
     {
 #ifndef ENABLE_AI_ASSISTANT
         // Dummy implementation - the assistant was not built into this copy of the viewer.
-        assistant_chat_client::assistant_chat_client() {}
-        assistant_chat_client::~assistant_chat_client() {}
+
         // Unlike the real implementation these run synchronously on the caller's (UI) thread, so
         // callbacks are called directly - routing through `invoke` would enqueue onto
         // assistant_model's dispatch_queue and deadlock waiting for the UI thread to drain itself.
@@ -28,7 +24,6 @@ namespace rs2
             on_error("The AI Assistant was not built into this copy of RealSense Viewer.");
         }
         void assistant_chat_client::cancel() {}
-        size_t assistant_chat_client::on_curl_data(const char*, size_t) { return 0; }
         void assistant_chat_client::run(std::string, std::string, invoke_fn, event_callback, error_callback) {}
         // Deliberately never calls on_result: "unhealthy" means a real check against a real URL
         // failed, which isn't true here - the status dot should stay hidden, not show red.
@@ -38,7 +33,6 @@ namespace rs2
 #else
 
         static const char* BASE_URL = "https://rs-chat-hnd6gchgesc9fre6.a02.azurefd.net";
-        static const long CONNECT_TIMEOUT_SEC = 5L; // time allowed to establish the connection
         static const long REQUEST_TIMEOUT_SEC = 120L; // overall cap; SSE answers can stream for a while
         static const long ONE_SHOT_TIMEOUT_SEC = 10L; // overall cap for check_health()/send_reaction()
 
@@ -52,61 +46,6 @@ namespace rs2
                     body_json["conversationId"] = conversation_id;
                 return body_json.dump();
             }
-
-            // Wires up everything curl needs for the POST /api/chat/stream request; the caller
-            // still owns `headers`'s lifetime (curl_slist_free_all) since it must outlive perform().
-            void configure_chat_request(CURL* curl, const std::string& url, const std::string& body,
-                curl_slist* headers, curl_write_callback write_cb, void* write_userdata)
-            {
-                curl_easy_reset(curl);
-                curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-                curl_easy_setopt(curl, CURLOPT_POST, 1L);
-                curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-                curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
-                curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SEC);
-                curl_easy_setopt(curl, CURLOPT_TIMEOUT, REQUEST_TIMEOUT_SEC);
-                curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-                curl_easy_setopt(curl, CURLOPT_WRITEDATA, write_userdata);
-            }
-
-            // Maps a finished transfer's curl/HTTP result to on_error, if it wasn't a clean 2xx (that
-            // case, including a 2xx with no explicit SSE 'done'/'error' event, has nothing to report).
-            void report_transfer_result(CURLcode res, long http_status, const invoke_fn& invoke, const error_callback& on_error)
-            {
-                if (res != CURLE_OK)
-                {
-                    std::string message_text = rsutils::string::from() << "Couldn't reach the assistant: " << curl_easy_strerror(res);
-                    safe_invoke(invoke, [on_error, message_text]() { on_error(message_text); });
-                }
-                else if (http_status == 429)
-                {
-                    safe_invoke(invoke, [on_error]() { on_error("Too many requests - please wait a moment and try again."); });
-                }
-                else if (http_status >= 400)
-                {
-                    std::string message_text = rsutils::string::from() << "The assistant returned an error (HTTP " << http_status << ").";
-                    safe_invoke(invoke, [on_error, message_text]() { on_error(message_text); });
-                }
-            }
-        }
-
-        size_t assistant_chat_client::write_trampoline(char* ptr, size_t size, size_t nmemb, void* userdata)
-        {
-            return static_cast<assistant_chat_client*>(userdata)->on_curl_data(ptr, size * nmemb);
-        }
-
-        assistant_chat_client::assistant_chat_client()
-        {
-            _curl = curl_easy_init();
-        }
-
-        assistant_chat_client::~assistant_chat_client()
-        {
-            if (_curl)
-                curl_easy_cleanup(static_cast<CURL*>(_curl));
         }
 
         void assistant_chat_client::send(const std::string& message, const std::string& conversation_id,
@@ -145,63 +84,60 @@ namespace rs2
             _cancel_requested = true;
         }
 
-        size_t assistant_chat_client::on_curl_data(const char* ptr, size_t bytes)
-        {
-            if (_cancel_requested)
-                return 0; // returning less than `bytes` tells curl to abort the transfer
-
-            bool ok = _sse_parser.feed(ptr, bytes, [this](const sse_event& event) {
-                auto on_event = _active_on_event;
-                if (on_event)
-                    safe_invoke(_active_invoke, [on_event, event]() { on_event(event); });
-            });
-            if (!ok)
-            {
-                auto on_error = _active_on_error;
-                if (on_error)
-                    safe_invoke(_active_invoke, [on_error]() { on_error("The assistant's response was too large to process."); });
-                return 0; // abort the transfer, same as a user-requested cancel
-            }
-            return bytes;
-        }
-
         void assistant_chat_client::run(std::string message, std::string conversation_id,
             invoke_fn invoke, event_callback on_event, error_callback on_error)
         {
-            if (!_curl)
+            if (!_curl.valid())
             {
                 safe_invoke(invoke, [on_error]() { on_error("Could not initialize the HTTP client."); });
                 return;
             }
 
             _sse_parser.reset();
-            _active_invoke = invoke;
-            _active_on_event = on_event;
-            _active_on_error = on_error;
-
             std::string body = build_chat_request_body(message, conversation_id);
-            struct curl_slist* headers = nullptr;
-            headers = curl_slist_append(headers, "Content-Type: application/json");
-            headers = curl_slist_append(headers, "X-RS-Integration: viewer");
-
             std::string chat_url = std::string(BASE_URL) + "/api/chat/stream";
-            auto* curl = static_cast<CURL*>(_curl);
-            configure_chat_request(curl, chat_url, body, headers, write_trampoline, this);
 
-            auto res = curl_easy_perform(curl);
+            std::function<void(const sse_event&)> forward_event = [on_event, invoke](const sse_event& event) {
+                safe_invoke(invoke, [on_event, event]() { on_event(event); });
+            };
+            // A false return (parser overflow, or a user-requested cancel) aborts the transfer -
+            // reported below via _sse_parser.overflowed()/_cancel_requested.
+            std::function<bool(const char*, size_t)> on_data = [this, &forward_event](const char* data, size_t len) {
+                if (_cancel_requested)
+                    return false;
+                return _sse_parser.feed(data, len, forward_event);
+            };
 
             long http_status = 0;
-            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
-            curl_slist_free_all(headers);
+            std::string error_detail;
+            bool ok = _curl.post_stream(chat_url, body, on_data,
+                "X-RS-Integration: viewer", REQUEST_TIMEOUT_SEC, &http_status, &error_detail);
 
-            _active_invoke = nullptr;
-            _active_on_event = nullptr;
-            _active_on_error = nullptr;
+            if (_cancel_requested)
+                return; // silent user cancel, nothing to report
 
-            if (_cancel_requested || _sse_parser.overflowed())
-                return; // on_curl_data already reported this (or it's a silent user cancel)
+            if (_sse_parser.overflowed())
+            {
+                safe_invoke(invoke, [on_error]() { on_error("The assistant's response was too large to process."); });
+                return;
+            }
 
-            report_transfer_result(res, http_status, invoke, on_error);
+            // Maps a finished transfer's result to on_error, if it wasn't a clean 2xx (that case,
+            // including a 2xx with no explicit SSE 'done'/'error' event, has nothing to report).
+            if (!ok)
+            {
+                std::string message_text = rsutils::string::from() << "Couldn't reach the assistant: " << error_detail;
+                safe_invoke(invoke, [on_error, message_text]() { on_error(message_text); });
+            }
+            else if (http_status == 429)
+            {
+                safe_invoke(invoke, [on_error]() { on_error("Too many requests - please wait a moment and try again."); });
+            }
+            else if (http_status >= 400)
+            {
+                std::string message_text = rsutils::string::from() << "The assistant returned an error (HTTP " << http_status << ").";
+                safe_invoke(invoke, [on_error, message_text]() { on_error(message_text); });
+            }
         }
 
         void assistant_chat_client::check_health(invoke_fn invoke, std::function<void(bool)> on_result)
