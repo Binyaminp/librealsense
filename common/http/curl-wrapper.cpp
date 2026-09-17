@@ -53,6 +53,37 @@ namespace rs2
         // Discard sink for uploads (we don't need the response body).
         static size_t discard_callback( void *, size_t size, size_t nmemb, void * ) { return size * nmemb; }
 
+        // Shared setup for post_json()/post_stream(). Returns the header list (caller owns it,
+        // curl_slist_free_all() after perform()), or nullptr if allocation failed. Deliberately
+        // excludes FAILONERROR/FOLLOWLOCATION/the write sink - those differ per caller.
+        static curl_slist * configure_post( CURL * curl, const std::string & url, const std::string & body,
+                                             const std::string & extra_header, long overall_timeout_sec )
+        {
+            curl_slist * headers = curl_slist_append( nullptr, "Content-Type: application/json" );
+            if( headers && ! extra_header.empty() )
+            {
+                curl_slist * with_extra = curl_slist_append( headers, extra_header.c_str() );
+                if( ! with_extra )
+                    curl_slist_free_all( headers );  // append failed without taking ownership
+                headers = with_extra;
+            }
+            if( ! headers )
+            {
+                LOG_ERROR( "Failed to allocate curl headers" );
+                return nullptr;
+            }
+
+            curl_easy_setopt( curl, CURLOPT_URL, url.c_str() );
+            curl_easy_setopt( curl, CURLOPT_POST, 1L );
+            curl_easy_setopt( curl, CURLOPT_POSTFIELDS, body.c_str() );
+            curl_easy_setopt( curl, CURLOPT_POSTFIELDSIZE, (long)body.size() );
+            curl_easy_setopt( curl, CURLOPT_HTTPHEADER, headers );
+            curl_easy_setopt( curl, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SEC );
+            curl_easy_setopt( curl, CURLOPT_TIMEOUT, overall_timeout_sec );
+            curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1L );
+            return headers;
+        }
+
         struct progress_state { curl_wrapper::progress_func fn; CURL * curl; curl_off_t last_time; };
 
         // Throttled to one call per PROGRESS_MIN_INTERVAL; return non-zero to abort (curl convention).
@@ -137,28 +168,10 @@ namespace rs2
                 return false;
             CURL * curl = static_cast< CURL * >( _curl );
 
-            curl_slist * headers = curl_slist_append( nullptr, "Content-Type: application/json" );
-            if( headers && ! extra_header.empty() )
-            {
-                curl_slist * with_extra = curl_slist_append( headers, extra_header.c_str() );
-                if( ! with_extra )
-                    curl_slist_free_all( headers );  // append failed without taking ownership
-                headers = with_extra;
-            }
+            curl_slist * headers = configure_post( curl, url, body, extra_header, UPLOAD_TIMEOUT_SEC );
             if( ! headers )
-            {
-                LOG_ERROR( "Failed to allocate curl headers" );
                 return false;
-            }
 
-            curl_easy_setopt( curl, CURLOPT_URL, url.c_str() );
-            curl_easy_setopt( curl, CURLOPT_POST, 1L );
-            curl_easy_setopt( curl, CURLOPT_POSTFIELDS, body.c_str() );
-            curl_easy_setopt( curl, CURLOPT_POSTFIELDSIZE, (long)body.size() );
-            curl_easy_setopt( curl, CURLOPT_HTTPHEADER, headers );
-            curl_easy_setopt( curl, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SEC );
-            curl_easy_setopt( curl, CURLOPT_TIMEOUT, UPLOAD_TIMEOUT_SEC );
-            curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1L );
             curl_easy_setopt( curl, CURLOPT_FAILONERROR, 1L );
             curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, discard_callback );
 
@@ -188,29 +201,13 @@ namespace rs2
                 return false;
             CURL * curl = static_cast< CURL * >( _curl );
 
-            curl_slist * headers = curl_slist_append( nullptr, "Content-Type: application/json" );
-            if( headers && ! extra_header.empty() )
-            {
-                curl_slist * with_extra = curl_slist_append( headers, extra_header.c_str() );
-                if( ! with_extra )
-                    curl_slist_free_all( headers );  // append failed without taking ownership
-                headers = with_extra;
-            }
+            curl_slist * headers = configure_post( curl, url, body, extra_header, overall_timeout_sec );
             if( ! headers )
             {
-                LOG_ERROR( "Failed to allocate curl headers" );
                 if( out_error_detail ) *out_error_detail = "Failed to allocate curl headers";
                 return false;
             }
 
-            curl_easy_setopt( curl, CURLOPT_URL, url.c_str() );
-            curl_easy_setopt( curl, CURLOPT_POST, 1L );
-            curl_easy_setopt( curl, CURLOPT_POSTFIELDS, body.c_str() );
-            curl_easy_setopt( curl, CURLOPT_POSTFIELDSIZE, (long)body.size() );
-            curl_easy_setopt( curl, CURLOPT_HTTPHEADER, headers );
-            curl_easy_setopt( curl, CURLOPT_CONNECTTIMEOUT, CONNECT_TIMEOUT_SEC );
-            curl_easy_setopt( curl, CURLOPT_TIMEOUT, overall_timeout_sec );  // 0 = no cap
-            curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1L );
             curl_easy_setopt( curl, CURLOPT_FOLLOWLOCATION, 1L );
             // Deliberately no CURLOPT_FAILONERROR: unlike get()/post_json(), the caller here wants
             // the full response body (which may itself carry a server-sent error event) regardless
