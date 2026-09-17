@@ -106,8 +106,16 @@ namespace rs2
         {
             auto me = shared_from_this();
             std::thread t([me, url, invoke]() {
-                auto decoded = fetch_and_decode(url);
-                apply_fetch_result(me, url, invoke, std::move(decoded));
+                try
+                {
+                    auto decoded = fetch_and_decode(url);
+                    apply_fetch_result(me, url, invoke, std::move(decoded));
+                }
+                catch (...)
+                {
+                    // Entry stays "loading" forever in this edge case, same as any other fetch
+                    // that never completes - not a new failure mode, just not a crash either.
+                }
             });
             t.detach();
         }
