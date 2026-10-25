@@ -86,6 +86,7 @@ static std::string thrown_message( int32_t code )
 
 TEST_CASE( "error mapping" )
 {
+    CHECK_THROWS_AS( nn::throw_error( -1 ), not_implemented_exception );
     CHECK_THROWS_AS( nn::throw_error( -4 ), not_implemented_exception );
     CHECK_THAT( thrown_message( -4 ), ContainsSubstring( "locked" ) );
     CHECK_THROWS_AS( nn::throw_error( -12 ), not_implemented_exception );

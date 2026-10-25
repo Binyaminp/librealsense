@@ -14,9 +14,10 @@ log = logging.getLogger(__name__)
 
 
 pytestmark = [
-    pytest.mark.device_each( "D585" ),
+    pytest.mark.device_each( "D555", "D585" ),
     pytest.mark.device_exclude( "D585S" ),       # the safety SKU has no perception sensor
     pytest.mark.device_type_exclude( "GMSL" ),   # uploads go over the USB HW monitor only
+    pytest.mark.device_type_exclude( "DDS" ),
 ]
 
 NN_UPLOAD_MIN_FW = rsutils.version( 7, 60, 0, 0 )   # placeholder, as in d500-nn-loader.cpp

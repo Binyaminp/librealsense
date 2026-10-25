@@ -31,6 +31,7 @@ std::string error_message( int32_t code )
 {
     switch( code )
     {
+    case -1: return "the NN tables are not supported by this firmware";
     case -2: return "invalid upload parameter";
     case -3: return "a model in the device file system overrides the flash slot; remove it before uploading";
     case -4: return "NN upload is not supported on locked cameras";
@@ -51,7 +52,7 @@ std::string error_message( int32_t code )
 void throw_error( int32_t code )
 {
     std::string msg = rsutils::string::from() << "NN upload failed: " << error_message( code ) << " (" << code << ")";
-    if( code == -4 || code == -12 || code == -19 )
+    if( code == -1 || code == -4 || code == -12 || code == -19 )
         throw not_implemented_exception( msg );
     throw invalid_value_exception( msg );
 }
