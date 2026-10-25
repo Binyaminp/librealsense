@@ -22,7 +22,7 @@ void nn_transport::send_table( uint16_t table_id, uint32_t param1, uint32_t para
 
     auto const before = get_status();
     if( nn::is_busy( before.state ) )
-        throw io_exception( "NN upload failed: another upload is in progress on the device" );
+        throw io_exception( std::string( "NN upload failed: " ) + nn::BUSY_MESSAGE );
 
     for( size_t i = 0; i < n_chunks; ++i )
     {

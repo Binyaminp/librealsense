@@ -8,6 +8,8 @@
 #include "rs_device.hpp"
 #include "../h/rs_nn.h"
 
+#include <climits>
+
 namespace rs2
 {
     /**
@@ -37,7 +39,7 @@ namespace rs2
                         bool activate = true ) const
         {
             rs2_error * e = nullptr;
-            rs2_nn_upload_cpp( _dev.get(), file.data(), int( file.size() ), target, slot, activate, nullptr, &e );
+            rs2_nn_upload_cpp( _dev.get(), file.data(), file_size( file ), target, slot, activate, nullptr, &e );
             error::handle( e );
         }
 
@@ -49,7 +51,7 @@ namespace rs2
                         T callback ) const
         {
             rs2_error * e = nullptr;
-            rs2_nn_upload_cpp( _dev.get(), file.data(), int( file.size() ), target, slot, activate,
+            rs2_nn_upload_cpp( _dev.get(), file.data(), file_size( file ), target, slot, activate,
                                new update_progress_callback< T >( std::move( callback ) ), &e );
             error::handle( e );
         }
@@ -67,6 +69,14 @@ namespace rs2
             if( reason )
                 *reason = buf;
             return supported;
+        }
+
+    private:
+        // The C API takes an int: anything larger is passed as INT_MAX, so the size check rejects it instead of a
+        // truncated size going through
+        static int file_size( const std::vector< uint8_t > & file )
+        {
+            return file.size() > size_t( INT_MAX ) ? INT_MAX : int( file.size() );
         }
     };
 }

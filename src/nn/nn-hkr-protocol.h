@@ -43,6 +43,7 @@ enum class upload_state : uint8_t
     error,
 };
 
+constexpr const char * BUSY_MESSAGE = "another upload is in progress on the device";
 inline bool is_busy( upload_state state ) { return state >= upload_state::receiving && state <= upload_state::activating; }
 
 // NN_STATUS, little-endian; readers ignore bytes beyond the fields they know

@@ -42,8 +42,11 @@ namespace librealsense
 
         std::lock_guard< std::mutex > lock( _nn_upload_mutex );
         for( size_t i = 0; i < get_sensors_count(); ++i )
-            if( dynamic_cast< perception_sensor * >( &get_sensor( i ) ) && get_sensor( i ).is_streaming() )
+        {
+            auto & sensor = get_sensor( i );
+            if( dynamic_cast< perception_sensor * >( &sensor ) && sensor.is_streaming() )
                 throw wrong_api_call_sequence_exception( "NN upload: stop the Perception sensor before uploading" );
+        }
         if( is_locked_now() )
             nn::throw_error( ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION );
 
@@ -56,16 +59,25 @@ namespace librealsense
 
     bool d500_nn_loader::is_upload_supported( std::string & reason )
     {
+        // Never waits for an upload in progress: apps call this to enable or disable their upload control
+        std::unique_lock< std::mutex > lock( _nn_upload_mutex, std::try_to_lock );
         int32_t err = ds::d500_hwmon_response::SUCCESS;
         nn::status status;
+        reason.clear();
         if( ! supports_nn_upload() )
             err = ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID;
+        else if( ! lock.owns_lock() )
+            reason = nn::BUSY_MESSAGE;
         else if( is_locked_now() )
             err = ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION;
         else
+        {
             err = nn_transport_hwm( _hw_monitor ).read_status( status );
+            if( err == ds::d500_hwmon_response::SUCCESS && nn::is_busy( status.state ) )
+                reason = nn::BUSY_MESSAGE;
+        }
         if( err != ds::d500_hwmon_response::SUCCESS )
             reason = nn::error_message( err );
-        return err == ds::d500_hwmon_response::SUCCESS;
+        return reason.empty();
     }
 }
