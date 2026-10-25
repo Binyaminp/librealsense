@@ -32,6 +32,9 @@ void nn_transport_hwm::send_table( uint16_t table_id, uint32_t param1, uint32_t 
         throw invalid_value_exception( rsutils::string::from() << "invalid HKR table size " << table.size() );
 
     auto power = _raw_depth->bulk_operation();
+    auto const before = get_status();
+    if( nn::is_busy( before.state ) )
+        throw io_exception( "NN upload failed: another upload is in progress on the device" );
 
     command cmd( ds::SET_HKR_CONFIG_TABLE, param1, table_id, param3 );
     for( size_t i = 0; i < n_chunks; ++i )
@@ -45,10 +48,10 @@ void nn_transport_hwm::send_table( uint16_t table_id, uint32_t param1, uint32_t 
         if( response != ds::d500_hwmon_response::SUCCESS )
             nn::throw_error( response );
         if( progress )
-            progress( 0.95f * ( i + 1 ) / n_chunks );
+            progress( 0.9f * ( i + 1 ) / n_chunks );
     }
 
-    wait_for_commit();
+    wait_for_commit( before.upload_seq + 1, progress );
     if( progress )
         progress( 1.f );
 }
@@ -61,32 +64,47 @@ int32_t nn_transport_hwm::read_status( nn::status & status )
     auto reply = _hwm->hw_monitor::send( cmd, &response );
     if( response != ds::d500_hwmon_response::SUCCESS )
         return response;
-    if( reply.size() < nn::TABLE_HEADER_SIZE + sizeof( status ) )
+    if( reply.size() < sizeof( status ) )
         throw invalid_value_exception( rsutils::string::from() << "NN status table too short: " << reply.size() << " bytes" );
-    std::memcpy( &status, reply.data() + nn::TABLE_HEADER_SIZE, sizeof( status ) );
+    std::memcpy( &status, reply.data(), sizeof( status ) );
     return 0;
 }
 
 
-// The last chunk's reply only confirms validation: commit and activation outlast the 1 s XU reply window, so the
-// device reports their outcome in its status table
-void nn_transport_hwm::wait_for_commit()
+nn::status nn_transport_hwm::get_status()
 {
-    auto const deadline = std::chrono::steady_clock::now() + nn::COMMIT_TIMEOUT;
+    nn::status status;
+    if( auto err = read_status( status ) )
+        nn::throw_error( err );
+    return status;
+}
+
+
+// The last chunk's reply comes before the commit, which outlasts the 1 s XU reply window: the device reports its
+// progress and result in NN_STATUS, under the sequence number of this upload
+void nn_transport_hwm::wait_for_commit( uint32_t upload_seq, const progress_callback & progress )
+{
+    auto const start = std::chrono::steady_clock::now();
+    auto last_change = start;
+    nn::status last = {};
     while( true )
     {
-        nn::status status;
-        if( auto err = read_status( status ) )
-            nn::throw_error( err );
-        if( status.state == nn::upload_state::done_reboot_required )
-            return;
-        if( status.state == nn::upload_state::failed )
-            nn::throw_error( status.last_error );
-        // The last chunk was accepted, so an idle session means the device dropped it (e.g. restarted)
-        if( status.state == nn::upload_state::idle )
-            throw io_exception( "NN upload failed: the device dropped the upload before storing it" );
-        if( std::chrono::steady_clock::now() > deadline )
+        auto status = get_status();
+        auto const now = std::chrono::steady_clock::now();
+        if( status.upload_seq == upload_seq )
+        {
+            if( status.state == nn::upload_state::done )
+                return;
+            if( status.state == nn::upload_state::error )
+                nn::throw_error( status.error );
+            if( progress )
+                progress( 0.9f + 0.001f * std::min< uint8_t >( status.progress, 100 ) );
+        }
+        if( status.upload_seq != last.upload_seq || status.state != last.state || status.progress != last.progress )
+            last_change = now;
+        if( now - last_change > nn::STALL_TIMEOUT || now - start > nn::COMMIT_TIMEOUT )
             throw io_exception( "NN upload failed: timed out waiting for the device to store the package" );
+        last = status;
         std::this_thread::sleep_for( nn::STATUS_POLL_INTERVAL );
     }
 }

@@ -22,7 +22,8 @@ public:
     int32_t read_status( nn::status & status ) override;
 
 private:
-    void wait_for_commit();
+    nn::status get_status();
+    void wait_for_commit( uint32_t upload_seq, const progress_callback & progress );
 
     std::shared_ptr< hw_monitor > _hwm;
     std::shared_ptr< uvc_sensor > _raw_depth;

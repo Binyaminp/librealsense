@@ -15,13 +15,14 @@ namespace nn {
 
 // Host-to-HKR NN package protocol over SET/GET_HKR_CONFIG_TABLE (0xA6/0xA7).
 // Tables come from the virtual-table range (0x0A00-0x0AFF). The device replies to the last chunk once the package is
-// validated, then commits and activates it; the result is read from NN_STATUS.
+// received, then validates, writes and activates it in the background; progress and result are read from NN_STATUS.
 // Values below follow the draft HKR FW interface spec and are expected to change until it is frozen.
 constexpr uint16_t PACKAGE_TABLE_ID = 0x0A04;  // NN_MODEL
 constexpr uint16_t STATUS_TABLE_ID = 0x0A07;   // NN_STATUS
 constexpr uint16_t TABLE_VERSION = 0x0100;
-constexpr uint32_t STATUS_REGION = 1;
+constexpr uint32_t STATUS_REGION = 2;  // RAM
 constexpr std::chrono::milliseconds STATUS_POLL_INTERVAL( 100 );
+constexpr std::chrono::seconds STALL_TIMEOUT( 10 );  // no change in state or progress
 constexpr std::chrono::seconds COMMIT_TIMEOUT( 60 );
 
 // param4 carries the chunk index in 16 bits, and HKR tables carry a 16-byte header in front of the payload
@@ -30,26 +31,38 @@ constexpr size_t MAX_CHUNKS = 1 << 16;
 constexpr size_t TABLE_HEADER_SIZE = 16;
 constexpr size_t MAX_FILE_SIZE = MAX_CHUNKS * CHUNK_SIZE - TABLE_HEADER_SIZE;
 
-enum class upload_state : uint32_t
+enum class upload_state : uint8_t
 {
     idle,
     receiving,
-    committing,
-    done_reboot_required,
-    failed,
+    validating,
+    decompressing,
+    writing_flash,
+    activating,
+    done,
+    error,
 };
 
+inline bool is_busy( upload_state state ) { return state >= upload_state::receiving && state <= upload_state::activating; }
+
+// NN_STATUS, little-endian; readers ignore bytes beyond the fields they know
 #pragma pack( push, 1 )
 struct status
 {
+    uint16_t version;
+    uint16_t size;
     upload_state state;
-    int32_t last_error;
+    uint8_t slot;
+    uint8_t progress;  // 0-100% of the commit
+    uint8_t reserved;
+    int32_t error;
+    uint32_t upload_seq;  // incremented by the device on every chunk 0
     uint32_t bytes_received;
-    uint32_t active_model_source;
-    uint32_t active_coeff_crc32;
-    uint32_t fs_pair_present;
+    uint32_t total_bytes;
+    uint32_t elapsed_ms;
 };
 #pragma pack( pop )
+static_assert( sizeof( status ) == 28, "unexpected NN_STATUS size" );
 
 // The HKR table header (with CRC-32 of the file) followed by the file, unchanged
 std::vector< uint8_t > build_table( uint16_t table_id, const uint8_t * file, size_t size );
