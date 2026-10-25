@@ -9,6 +9,14 @@
 
 namespace librealsense {
 
+// Outside nn_transport: GCC and Clang reject a nested class's default member initializers in a default argument
+struct nn_transport_timing
+{
+    std::chrono::milliseconds poll_interval = nn::STATUS_POLL_INTERVAL;
+    std::chrono::milliseconds stall_timeout = nn::STALL_TIMEOUT;
+    std::chrono::milliseconds commit_timeout = nn::COMMIT_TIMEOUT;
+};
+
 // Moves an HKR table to the device and follows its commit in NN_STATUS. The link is implemented per channel, so others
 // (e.g. a bulk endpoint) can be added later.
 class nn_transport
@@ -16,14 +24,7 @@ class nn_transport
 public:
     using progress_callback = std::function< void( float ) >;
 
-    struct timing
-    {
-        std::chrono::milliseconds poll_interval = nn::STATUS_POLL_INTERVAL;
-        std::chrono::milliseconds stall_timeout = nn::STALL_TIMEOUT;
-        std::chrono::milliseconds commit_timeout = nn::COMMIT_TIMEOUT;
-    };
-
-    explicit nn_transport( timing const & t = {} ) : _timing( t ) {}
+    explicit nn_transport( nn_transport_timing const & t = {} ) : _timing( t ) {}
     virtual ~nn_transport() = default;
 
     // Sends the whole table (header included) and returns once the device has committed it; throws on any device error
@@ -39,7 +40,7 @@ private:
     nn::status get_status();
     void wait_for_commit( uint32_t upload_seq, const progress_callback & progress );
 
-    timing _timing;
+    nn_transport_timing _timing;
 };
 
 }  // namespace librealsense
