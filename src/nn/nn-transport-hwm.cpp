@@ -84,7 +84,7 @@ void nn_transport_hwm::wait_for_commit()
             nn::throw_error( status.last_error );
         // The last chunk was accepted, so an idle session means the device dropped it (e.g. restarted)
         if( status.state == nn::upload_state::idle )
-            throw io_exception( "NN upload failed: the device dropped the upload before storing it; the previous model is kept" );
+            throw io_exception( "NN upload failed: the device dropped the upload before storing it" );
         if( std::chrono::steady_clock::now() > deadline )
             throw io_exception( "NN upload failed: timed out waiting for the device to store the package" );
         std::this_thread::sleep_for( nn::STATUS_POLL_INTERVAL );
