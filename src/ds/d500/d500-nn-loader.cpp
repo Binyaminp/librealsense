@@ -6,6 +6,7 @@
 #include "d500-private.h"
 
 #include <src/perception-sensor.h>
+#include <src/uvc-sensor.h>
 #include <src/nn/nn-transport-hwm.h>
 
 namespace librealsense
@@ -47,7 +48,8 @@ namespace librealsense
             nn::throw_error( ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION );
 
         // Slot and activate go into param3 once FW defines its layout; until then validation admits only slot 0 + activate
-        nn_transport_hwm( _hw_monitor, get_raw_depth_sensor() )
+        auto power = get_raw_depth_sensor()->bulk_operation();
+        nn_transport_hwm( _hw_monitor )
             .send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), 0, nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
                          [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
     }
@@ -61,7 +63,7 @@ namespace librealsense
         else if( is_locked_now() )
             err = ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION;
         else
-            err = nn_transport_hwm( _hw_monitor, get_raw_depth_sensor() ).read_status( status );
+            err = nn_transport_hwm( _hw_monitor ).read_status( status );
         if( err != ds::d500_hwmon_response::SUCCESS )
             reason = nn::error_message( err );
         return err == ds::d500_hwmon_response::SUCCESS;

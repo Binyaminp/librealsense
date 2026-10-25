@@ -10,23 +10,19 @@
 
 namespace librealsense {
 
-// HW-monitor transport: 1000-byte chunks of SET_HKR_CONFIG_TABLE, then polling the GET_HKR_CONFIG_TABLE status table.
-// UVC power is held for the whole transfer; otherwise each chunk costs a power cycle (~95 ms instead of ~0.6 ms).
+// HW-monitor transport: 1000-byte chunks of SET_HKR_CONFIG_TABLE, and the status table with GET_HKR_CONFIG_TABLE.
+// The caller holds UVC power for the whole transfer; otherwise each chunk costs a power cycle (~95 ms instead of ~0.6 ms).
 class nn_transport_hwm : public nn_transport
 {
 public:
-    nn_transport_hwm( std::shared_ptr< hw_monitor > hwm, std::shared_ptr< uvc_sensor > raw_depth );
+    explicit nn_transport_hwm( std::shared_ptr< hw_monitor > hwm );
 
-    void send_table( uint16_t table_id, uint32_t param1, uint32_t param3,
-                     const std::vector< uint8_t > & table, const progress_callback & progress ) override;
+    int32_t send_chunk( uint16_t table_id, uint32_t param1, uint32_t param3, uint32_t param4,
+                        const uint8_t * data, size_t size ) override;
     int32_t read_status( nn::status & status ) override;
 
 private:
-    nn::status get_status();
-    void wait_for_commit( uint32_t upload_seq, const progress_callback & progress );
-
     std::shared_ptr< hw_monitor > _hwm;
-    std::shared_ptr< uvc_sensor > _raw_depth;
 };
 
 }  // namespace librealsense

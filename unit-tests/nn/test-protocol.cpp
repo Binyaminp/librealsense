@@ -9,6 +9,7 @@
 #include <src/nn/nn-loader.h>
 #include <src/librealsense-exception.h>
 
+#include <cstddef>
 #include <cstring>
 #include <string>
 
@@ -18,6 +19,7 @@ using Catch::Matchers::ContainsSubstring;
 
 TEST_CASE( "chunk numbering" )
 {
+    CHECK( nn::chunk_count( 0 ) == 0 );
     CHECK( nn::chunk_count( 1 ) == 1 );
     CHECK( nn::chunk_count( 1000 ) == 1 );
     CHECK( nn::chunk_count( 1001 ) == 2 );
@@ -63,6 +65,7 @@ TEST_CASE( "upload arguments" )
     CHECK_THROWS_AS( validate_nn_upload_args( nn::MAX_FILE_SIZE + 1, RS2_NN_TARGET_FLASH, 0, true ), invalid_value_exception );
     CHECK_THROWS_AS( validate_nn_upload_args( 1, RS2_NN_TARGET_DDR, 0, true ), not_implemented_exception );
     CHECK_THROWS_AS( validate_nn_upload_args( 1, RS2_NN_TARGET_FLASH, 1, true ), not_implemented_exception );
+    CHECK_THROWS_AS( validate_nn_upload_args( 1, RS2_NN_TARGET_FLASH, -1, true ), not_implemented_exception );
     CHECK_THROWS_AS( validate_nn_upload_args( 1, RS2_NN_TARGET_FLASH, 0, false ), not_implemented_exception );
 }
 
@@ -86,7 +89,24 @@ TEST_CASE( "error mapping" )
     CHECK_THROWS_AS( nn::throw_error( -4 ), not_implemented_exception );
     CHECK_THAT( thrown_message( -4 ), ContainsSubstring( "locked" ) );
     CHECK_THROWS_AS( nn::throw_error( -12 ), not_implemented_exception );
+    CHECK_THROWS_AS( nn::throw_error( -19 ), not_implemented_exception );
     CHECK_THROWS_AS( nn::throw_error( -10 ), invalid_value_exception );
     CHECK_THAT( thrown_message( -10 ), ContainsSubstring( "too large" ) && ContainsSubstring( "(-10)" ) );
     CHECK( nn::error_message( -99 ) == "device error -99" );
+}
+
+
+TEST_CASE( "status layout" )
+{
+    CHECK( offsetof( nn::status, state ) == 4 );
+    CHECK( offsetof( nn::status, progress ) == 6 );
+    CHECK( offsetof( nn::status, error ) == 8 );
+    CHECK( offsetof( nn::status, upload_seq ) == 12 );
+    CHECK( offsetof( nn::status, elapsed_ms ) == 24 );
+
+    CHECK_FALSE( nn::is_busy( nn::upload_state::idle ) );
+    CHECK( nn::is_busy( nn::upload_state::receiving ) );
+    CHECK( nn::is_busy( nn::upload_state::activating ) );
+    CHECK_FALSE( nn::is_busy( nn::upload_state::done ) );
+    CHECK_FALSE( nn::is_busy( nn::upload_state::error ) );
 }

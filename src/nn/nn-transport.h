@@ -9,20 +9,37 @@
 
 namespace librealsense {
 
-// Moves an HKR table to the device. Implemented per link, so other channels (e.g. a bulk endpoint) can be added later.
+// Moves an HKR table to the device and follows its commit in NN_STATUS. The link is implemented per channel, so others
+// (e.g. a bulk endpoint) can be added later.
 class nn_transport
 {
 public:
     using progress_callback = std::function< void( float ) >;
 
+    struct timing
+    {
+        std::chrono::milliseconds poll_interval = nn::STATUS_POLL_INTERVAL;
+        std::chrono::milliseconds stall_timeout = nn::STALL_TIMEOUT;
+        std::chrono::milliseconds commit_timeout = nn::COMMIT_TIMEOUT;
+    };
+
+    explicit nn_transport( timing const & t = {} ) : _timing( t ) {}
     virtual ~nn_transport() = default;
 
     // Sends the whole table (header included) and returns once the device has committed it; throws on any device error
-    virtual void send_table( uint16_t table_id, uint32_t param1, uint32_t param3,
-                             const std::vector< uint8_t > & table, const progress_callback & progress ) = 0;
+    void send_table( uint16_t table_id, uint32_t param1, uint32_t param3, const std::vector< uint8_t > & table,
+                     const progress_callback & progress );
 
-    // Returns 0 and fills the status, or the device error code
+    // Return 0, or the device error code
+    virtual int32_t send_chunk( uint16_t table_id, uint32_t param1, uint32_t param3, uint32_t param4,
+                                const uint8_t * data, size_t size ) = 0;
     virtual int32_t read_status( nn::status & status ) = 0;
+
+private:
+    nn::status get_status();
+    void wait_for_commit( uint32_t upload_seq, const progress_callback & progress );
+
+    timing _timing;
 };
 
 }  // namespace librealsense

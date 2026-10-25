@@ -8,6 +8,7 @@ target_sources(${LRS_TARGET}
         "${CMAKE_CURRENT_LIST_DIR}/nn-loader.h"
         "${CMAKE_CURRENT_LIST_DIR}/nn-loader.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/nn-transport.h"
+        "${CMAKE_CURRENT_LIST_DIR}/nn-transport.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/nn-transport-hwm.h"
         "${CMAKE_CURRENT_LIST_DIR}/nn-transport-hwm.cpp"
 )
