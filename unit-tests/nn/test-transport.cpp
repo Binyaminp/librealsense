@@ -29,7 +29,8 @@ public:
         uint8_t first;
     };
 
-    fake_transport() : nn_transport( { milliseconds( 1 ), milliseconds( 50 ), milliseconds( 200 ) } ) {}
+    // The total limit leaves the stall limit plenty of headroom on slow (e.g. instrumented) CI runners
+    fake_transport() : nn_transport( { milliseconds( 1 ), milliseconds( 50 ), milliseconds( 1000 ) } ) {}
 
     int32_t send_chunk( uint16_t, uint32_t, uint32_t, uint32_t param4, const uint8_t * data, size_t size ) override
     {
@@ -201,13 +202,13 @@ TEST_CASE( "commit timeouts" )
         t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::validating, 8, 10 ) };
         CHECK_THAT( upload( t ), ContainsSubstring( "timed out" ) );
         CHECK( elapsed() >= milliseconds( 50 ) );
-        CHECK( elapsed() < milliseconds( 200 ) );
+        CHECK( elapsed() < milliseconds( 1000 ) );
     }
     SECTION( "device restarted: its status no longer matches the upload" )
     {
         t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::idle, 0 ) };
         CHECK_THAT( upload( t ), ContainsSubstring( "timed out" ) );
-        CHECK( elapsed() < milliseconds( 200 ) );
+        CHECK( elapsed() < milliseconds( 1000 ) );
     }
     SECTION( "progress keeps changing but never completes" )
     {
@@ -218,6 +219,6 @@ TEST_CASE( "commit timeouts" )
                                        : make_status( nn::upload_state::writing_flash, 8, ++progress );
         };
         CHECK_THAT( upload( t ), ContainsSubstring( "timed out" ) );
-        CHECK( elapsed() >= milliseconds( 200 ) );
+        CHECK( elapsed() >= milliseconds( 1000 ) );
     }
 }
