@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <librealsense2/h/rs_nn.h>
+
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -18,7 +20,6 @@ namespace nn {
 constexpr uint16_t PACKAGE_TABLE_ID = 0x0A04;  // NN_MODEL
 constexpr uint16_t STATUS_TABLE_ID = 0x0A07;   // NN_STATUS
 constexpr uint16_t TABLE_VERSION = 0x0100;
-constexpr uint32_t TARGET_FLASH = 1;
 constexpr uint32_t STATUS_REGION = 1;
 constexpr std::chrono::milliseconds STATUS_POLL_INTERVAL( 100 );
 constexpr std::chrono::seconds COMMIT_TIMEOUT( 60 );
@@ -52,6 +53,9 @@ struct status
 
 // The HKR table header (with CRC-32 of the file) followed by the file, unchanged
 std::vector< uint8_t > build_table( uint16_t table_id, const uint8_t * file, size_t size );
+
+// param1 of a table write: 1 = flash, 2 = DDR
+inline uint32_t target_param( rs2_nn_target target ) { return target == RS2_NN_TARGET_DDR ? 2 : 1; }
 
 inline size_t chunk_count( size_t table_size ) { return ( table_size + CHUNK_SIZE - 1 ) / CHUNK_SIZE; }
 

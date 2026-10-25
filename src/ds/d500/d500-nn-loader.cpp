@@ -46,8 +46,9 @@ namespace librealsense
         if( is_locked_now() )
             nn::throw_error( ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION );
 
+        // Slot and activate go into param3 once FW defines its layout; until then validation admits only slot 0 + activate
         nn_transport_hwm( _hw_monitor, get_raw_depth_sensor() )
-            .send_table( nn::PACKAGE_TABLE_ID, nn::TARGET_FLASH, 0, nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
+            .send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), 0, nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
                          [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
     }
 

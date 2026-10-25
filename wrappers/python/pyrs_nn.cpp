@@ -29,6 +29,8 @@ void init_nn( py::module & m )
                   std::function< void( float ) > callback )
               {
                   py::buffer_info info = data.request();
+                  if( info.strides.size() != 1 || info.strides[0] != info.itemsize )
+                      throw std::runtime_error( "data must be a contiguous bytes-like object" );
                   auto begin = static_cast< const uint8_t * >( info.ptr );
                   std::vector< uint8_t > file( begin, begin + info.size * info.itemsize );
                   py::gil_scoped_release release;

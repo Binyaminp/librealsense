@@ -31,6 +31,9 @@ TEST_CASE( "chunk numbering" )
     CHECK( nn::chunk_count( nn::MAX_FILE_SIZE + 1 + nn::TABLE_HEADER_SIZE ) == nn::MAX_CHUNKS + 1 );
     CHECK( nn::chunk_param( nn::MAX_CHUNKS, 0 ) == 0xFFFF0000 );
     CHECK( nn::chunk_param( nn::MAX_CHUNKS, nn::MAX_CHUNKS - 1 ) == 0xFFFFFFFF );
+
+    CHECK( nn::target_param( RS2_NN_TARGET_FLASH ) == 1 );
+    CHECK( nn::target_param( RS2_NN_TARGET_DDR ) == 2 );
 }
 
 
