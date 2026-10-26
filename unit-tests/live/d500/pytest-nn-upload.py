@@ -1,7 +1,8 @@
 # License: Apache 2.0. See LICENSE file in root directory.
 # Copyright(c) 2026 RealSense, Inc. All Rights Reserved.
 
-# NN model upload (nn_loader): the checks done before any transfer, and the device rejecting a bad package.
+# NN model upload (nn_loader): reported only on the D585 over USB, the checks done before any transfer, and the device
+# rejecting a bad package.
 # Uploads of a real model package (then detecting with it) need a valid .hkrp test package and are not covered yet.
 
 import pytest
@@ -21,6 +22,7 @@ pytestmark = [
 ]
 
 NN_UPLOAD_MIN_FW = rsutils.version( 7, 60, 0, 0 )   # placeholder, as in d500-nn-loader.cpp
+NN_UPLOAD_PIDS = { "0C04", "0C05", "0C06", "0C07", "0C08" }   # D585 only, as nn_upload_pids in d500-private.h
 MAX_FILE_SIZE = ( 1 << 16 ) * 1000 - 16
 GARBAGE = bytes( range( 256 ) ) * 16                 # not a package: no HKRP magic
 
@@ -29,9 +31,15 @@ def is_locked( dev ):
     return dev.get_info( rs.camera_info.camera_locked ) == "YES"
 
 
+def is_d585( dev ):
+    return dev.get_info( rs.camera_info.product_id ).upper() in NN_UPLOAD_PIDS
+
+
 @pytest.fixture
 def loader( test_device ):
     dev, _ = test_device
+    if not is_d585( dev ):
+        pytest.skip( "NN upload is D585 only" )
     require_min_fw_version( dev, NN_UPLOAD_MIN_FW, "NN upload" )
     assert dev.is_nn_loader()
     return dev.as_nn_loader()
@@ -76,6 +84,12 @@ def frames_for( sensor, profile, seconds, action=None ):
         sensor.stop()
         sensor.close()
     return len( frames )
+
+
+def test_reported_only_on_d585( test_device ):
+    dev, _ = test_device
+    fw = rsutils.version( dev.get_info( rs.camera_info.firmware_version ) )
+    assert dev.is_nn_loader() == ( is_d585( dev ) and fw >= NN_UPLOAD_MIN_FW )
 
 
 def test_is_upload_supported( loader ):

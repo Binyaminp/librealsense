@@ -9,6 +9,8 @@
 #include <src/uvc-sensor.h>
 #include <src/nn/nn-transport-hwm.h>
 
+#include <rsutils/string/from.h>
+
 namespace librealsense
 {
     // First FW with the NN package tables; a placeholder until FW releases the feature
@@ -22,7 +24,26 @@ namespace librealsense
 
     bool d500_nn_loader::supports_nn_upload() const
     {
-        return ! _is_mipi_device && _fw_version >= NN_UPLOAD_MIN_FW;
+        return unsupported_reason().empty();
+    }
+
+    // A FW version alone can't tell the products sharing the FW apart, so the product ID and connection decide first
+    std::string d500_nn_loader::unsupported_reason() const
+    {
+        if( ! ds::nn_upload_pids.count( get_pid() ) || _is_mipi_device )
+            return "NN model upload is not supported on this camera";
+        if( _fw_version < NN_UPLOAD_MIN_FW )
+            return firmware_reason();
+        return {};
+    }
+
+    std::string d500_nn_loader::firmware_reason() const
+    {
+        std::string reason = rsutils::string::from() << "NN model upload is not supported by this camera's firmware (FW "
+                                                     << _fw_version << ")";
+        if( _fw_version < NN_UPLOAD_MIN_FW )
+            reason += rsutils::string::from() << ". Update to FW " << NN_UPLOAD_MIN_FW << " or later to use it";
+        return reason;
     }
 
     // The lock state is read fresh, as it can change while the device is connected
@@ -37,8 +58,9 @@ namespace librealsense
                                     rs2_update_progress_callback_sptr callback )
     {
         validate_nn_upload_args( size, target, slot, activate );
-        if( ! supports_nn_upload() )
-            throw not_implemented_exception( nn::error_message( ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID ) );
+        auto const unsupported = unsupported_reason();
+        if( ! unsupported.empty() )
+            throw not_implemented_exception( unsupported );
 
         std::lock_guard< std::mutex > lock( _nn_upload_mutex );
         for( size_t i = 0; i < get_sensors_count(); ++i )
@@ -63,20 +85,23 @@ namespace librealsense
         std::unique_lock< std::mutex > lock( _nn_upload_mutex, std::try_to_lock );
         int32_t err = ds::d500_hwmon_response::SUCCESS;
         nn::status status;
-        reason.clear();
-        if( ! supports_nn_upload() )
-            err = ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID;
-        else if( ! lock.owns_lock() )
+        reason = unsupported_reason();
+        if( ! reason.empty() )
+            return false;
+        if( ! lock.owns_lock() )
             reason = nn::BUSY_MESSAGE;
         else if( is_locked_now() )
             err = ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION;
         else
         {
+            // Confirms on first use that HKR has the NN tables: -1 / -12 if not
             err = nn_transport_hwm( _hw_monitor ).read_status( status );
             if( err == ds::d500_hwmon_response::SUCCESS && nn::is_busy( status.state ) )
                 reason = nn::BUSY_MESSAGE;
         }
-        if( err != ds::d500_hwmon_response::SUCCESS )
+        if( err == ds::d500_hwmon_response::INVALID_COMMAND || err == ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID )
+            reason = firmware_reason();
+        else if( err != ds::d500_hwmon_response::SUCCESS )
             reason = nn::error_message( err );
         return reason.empty();
     }

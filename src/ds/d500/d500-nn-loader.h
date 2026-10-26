@@ -10,7 +10,7 @@
 
 namespace librealsense
 {
-    // Uploads NN model packages over the HW monitor (USB only)
+    // Uploads NN model packages over the HW monitor: D585 over USB only
     class d500_nn_loader
         : public virtual d500_device
         , public nn_loader_interface
@@ -24,6 +24,9 @@ namespace librealsense
         bool is_upload_supported( std::string & reason ) override;
 
     private:
+        // Empty if this camera's product, connection and FW support the upload; otherwise why not
+        std::string unsupported_reason() const;
+        std::string firmware_reason() const;
         bool is_locked_now() const;
 
         std::mutex _nn_upload_mutex;

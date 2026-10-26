@@ -403,7 +403,6 @@ namespace librealsense
         , public ds_advanced_mode_base
         , public extended_firmware_logger_device
         , public eth_config_device
-        , public d500_nn_loader
     {
     public:
         rs555_device( std::shared_ptr< const d500_info > dev_info )
@@ -417,7 +416,6 @@ namespace librealsense
             , d500_depth_mapping( dev_info )
             , ds_advanced_mode_base()
             , extended_firmware_logger_device( dev_info, d500_device::_hw_monitor, get_firmware_logs_command() )
-            , d500_nn_loader( dev_info )
         {
             eth_config_device::init( static_cast< debug_interface * >( this ) );
             ds_advanced_mode_base::initialize_advanced_mode( this );
