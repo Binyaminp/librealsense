@@ -111,3 +111,50 @@ TEST_CASE( "status layout" )
     CHECK_FALSE( nn::is_busy( nn::upload_state::done ) );
     CHECK_FALSE( nn::is_busy( nn::upload_state::error ) );
 }
+
+
+TEST_CASE( "status reply" )
+{
+    nn::status sent = {};
+    sent.state = nn::upload_state::writing_flash;
+    sent.progress = 40;
+    sent.upload_seq = 9;
+    auto const bytes = reinterpret_cast< const uint8_t * >( &sent );
+    auto reply = nn::build_table( nn::STATUS_TABLE_ID, bytes, sizeof( sent ) );
+    REQUIRE( reply.size() == 44 );
+
+    auto status = nn::parse_status( reply );
+    CHECK( status.state == nn::upload_state::writing_flash );
+    CHECK( status.progress == 40 );
+    CHECK( status.upload_seq == 9 );
+
+    // A longer status (a later version) is accepted
+    std::vector< uint8_t > longer( bytes, bytes + sizeof( sent ) );
+    longer.resize( sizeof( sent ) + 4 );
+    CHECK( nn::parse_status( nn::build_table( nn::STATUS_TABLE_ID, longer.data(), longer.size() ) ).upload_seq == 9 );
+
+    auto parse_error = []( std::vector< uint8_t > const & reply ) -> std::string
+    {
+        try
+        {
+            nn::parse_status( reply );
+        }
+        catch( librealsense_exception const & e )
+        {
+            return e.what();
+        }
+        return {};
+    };
+    auto corrupt = reply;
+    corrupt.back() ^= 1;
+    CHECK_THAT( parse_error( corrupt ), ContainsSubstring( "invalid NN status" ) );
+    CHECK_THAT( parse_error( nn::build_table( nn::PACKAGE_TABLE_ID, bytes, sizeof( sent ) ) ),
+                ContainsSubstring( "invalid NN status" ) );
+    CHECK_THAT( parse_error( nn::build_table( nn::STATUS_TABLE_ID, bytes, sizeof( sent ) - 1 ) ),
+                ContainsSubstring( "too short" ) );
+    auto truncated = nn::build_table( nn::STATUS_TABLE_ID, longer.data(), longer.size() );
+    truncated.pop_back();
+    CHECK_THAT( parse_error( truncated ), ContainsSubstring( "invalid NN status" ) );
+    // The status alone, without the header, as before FW added it
+    CHECK_THAT( parse_error( std::vector< uint8_t >( bytes, bytes + sizeof( sent ) ) ), ContainsSubstring( "too short" ) );
+}

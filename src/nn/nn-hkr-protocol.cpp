@@ -27,6 +27,22 @@ std::vector< uint8_t > build_table( uint16_t table_id, const uint8_t * file, siz
 }
 
 
+status parse_status( const std::vector< uint8_t > & reply )
+{
+    status result;
+    if( reply.size() < TABLE_HEADER_SIZE + sizeof( result ) )
+        throw invalid_value_exception( rsutils::string::from() << "NN status table too short: " << reply.size() << " bytes" );
+    auto header = reinterpret_cast< const table_header * >( reply.data() );
+    auto const data = reply.data() + TABLE_HEADER_SIZE;
+    if( header->get_table_type() != STATUS_TABLE_ID || header->get_table_size() < sizeof( result )
+        || header->get_table_size() > reply.size() - TABLE_HEADER_SIZE
+        || header->get_crc32() != rsutils::number::calc_crc32( data, header->get_table_size() ) )
+        throw invalid_value_exception( "invalid NN status table" );
+    std::memcpy( &result, data, sizeof( result ) );
+    return result;
+}
+
+
 std::string error_message( int32_t code )
 {
     switch( code )

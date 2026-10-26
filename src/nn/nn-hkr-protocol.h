@@ -46,7 +46,7 @@ enum class upload_state : uint8_t
 constexpr const char * BUSY_MESSAGE = "another upload is in progress on the device";
 inline bool is_busy( upload_state state ) { return state >= upload_state::receiving && state <= upload_state::activating; }
 
-// NN_STATUS, little-endian; readers ignore bytes beyond the fields they know
+// NN_STATUS, little-endian, after the HKR table header; readers ignore bytes beyond the fields they know
 #pragma pack( push, 1 )
 struct status
 {
@@ -57,7 +57,7 @@ struct status
     uint8_t progress;  // 0-100% of the commit
     uint8_t reserved;
     int32_t error;
-    uint32_t upload_seq;  // incremented by the device on every chunk 0
+    uint32_t upload_seq;  // incremented by the device on every chunk 0, if it fills it
     uint32_t bytes_received;
     uint32_t total_bytes;
     uint32_t elapsed_ms;
@@ -67,6 +67,9 @@ static_assert( sizeof( status ) == 28, "unexpected NN_STATUS size" );
 
 // The HKR table header (with CRC-32 of the file) followed by the file, unchanged
 std::vector< uint8_t > build_table( uint16_t table_id, const uint8_t * file, size_t size );
+
+// The status from an NN_STATUS reply: header and CRC are checked
+status parse_status( const std::vector< uint8_t > & reply );
 
 // param1 of a table write: 1 = flash, 2 = DDR
 inline uint32_t target_param( rs2_nn_target target ) { return target == RS2_NN_TARGET_DDR ? 2 : 1; }

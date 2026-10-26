@@ -5,10 +5,6 @@
 
 #include <src/ds/d500/d500-private.h>
 
-#include <rsutils/string/from.h>
-
-#include <cstring>
-
 namespace librealsense {
 
 static_assert( nn::CHUNK_SIZE == HW_MONITOR_COMMAND_SIZE, "HKR table chunks must fill an HW-monitor command" );
@@ -39,9 +35,7 @@ int32_t nn_transport_hwm::read_status( nn::status & status )
     auto reply = _hwm->hw_monitor::send( cmd, &response );
     if( response != ds::d500_hwmon_response::SUCCESS )
         return response;
-    if( reply.size() < sizeof( status ) )
-        throw invalid_value_exception( rsutils::string::from() << "NN status table too short: " << reply.size() << " bytes" );
-    std::memcpy( &status, reply.data(), sizeof( status ) );
+    status = nn::parse_status( reply );
     return 0;
 }
 

@@ -34,7 +34,7 @@ void nn_transport::send_table( uint16_t table_id, uint32_t param1, uint32_t para
             progress( 0.9f * ( i + 1 ) / n_chunks );
     }
 
-    wait_for_commit( before.upload_seq + 1, progress );
+    wait_for_commit( before.upload_seq, progress );
     if( progress )
         progress( 1.f );
 }
@@ -50,8 +50,9 @@ nn::status nn_transport::get_status()
 
 
 // The last chunk's reply comes before the commit, which outlasts the 1 s XU reply window: the device reports its
-// progress and result in NN_STATUS, under the sequence number of this upload
-void nn_transport::wait_for_commit( uint32_t upload_seq, const progress_callback & progress )
+// progress and result in NN_STATUS. It resets the state on chunk 0 and, if it fills upload_seq, increments it, so a
+// status still carrying the sequence number seen before the upload is this upload's too
+void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback & progress )
 {
     auto const start = std::chrono::steady_clock::now();
     auto last_change = start;
@@ -60,7 +61,7 @@ void nn_transport::wait_for_commit( uint32_t upload_seq, const progress_callback
     {
         auto status = get_status();
         auto const now = std::chrono::steady_clock::now();
-        if( status.upload_seq == upload_seq )
+        if( status.upload_seq == seq_before || status.upload_seq == seq_before + 1 )
         {
             if( status.state == nn::upload_state::done )
                 return;

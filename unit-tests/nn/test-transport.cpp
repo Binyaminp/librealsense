@@ -165,24 +165,24 @@ TEST_CASE( "device errors" )
 }
 
 
-TEST_CASE( "status of an earlier upload is ignored" )
+TEST_CASE( "upload sequence number" )
 {
-    SECTION( "done" )
+    SECTION( "not filled by the device" )
     {
         fake_transport t;
-        t.statuses = { make_status( nn::upload_state::done, 7 ), make_status( nn::upload_state::done, 7 ),
+        t.statuses = { make_status( nn::upload_state::idle, 0 ), make_status( nn::upload_state::validating, 0 ),
+                       make_status( nn::upload_state::error, 0, 0, -6 ) };
+        CHECK_THAT( upload( t ), ContainsSubstring( "CRC mismatch (-6)" ) );
+    }
+    SECTION( "status of another upload is ignored" )
+    {
+        fake_transport t;
+        t.statuses = { make_status( nn::upload_state::done, 7 ), make_status( nn::upload_state::error, 3, 0, -5 ),
                        make_status( nn::upload_state::done, 8 ) };
         CHECK( upload( t ) == "" );
         CHECK( t.status_reads == 3 );
     }
-    SECTION( "error" )
-    {
-        fake_transport t;
-        t.statuses = { make_status( nn::upload_state::error, 7, 0, -5 ), make_status( nn::upload_state::error, 7, 0, -5 ),
-                       make_status( nn::upload_state::done, 8 ) };
-        CHECK( upload( t ) == "" );
-    }
-    SECTION( "sequence number wraps" )
+    SECTION( "wraps" )
     {
         fake_transport t;
         t.statuses = { make_status( nn::upload_state::idle, 0xFFFFFFFF ), make_status( nn::upload_state::done, 0 ) };
