@@ -92,7 +92,7 @@ TEST_CASE( "error mapping" )
     CHECK_THROWS_AS( nn::throw_error( -12 ), not_implemented_exception );
     CHECK_THROWS_AS( nn::throw_error( -19 ), not_implemented_exception );
     CHECK_THROWS_AS( nn::throw_error( -10 ), invalid_value_exception );
-    CHECK_THAT( thrown_message( -10 ), ContainsSubstring( "too large" ) && ContainsSubstring( "(-10)" ) );
+    CHECK_THAT( thrown_message( -10 ), ContainsSubstring( "too large for this camera's model slot" ) && ContainsSubstring( "(-10)" ) );
     CHECK( nn::error_message( -99 ) == "device error -99" );
 }
 

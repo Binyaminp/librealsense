@@ -29,8 +29,8 @@ public:
         uint8_t first;
     };
 
-    // The total limit leaves the stall limit plenty of headroom on slow (e.g. instrumented) CI runners
-    fake_transport() : nn_transport( { milliseconds( 1 ), milliseconds( 50 ), milliseconds( 1000 ) } ) {}
+    // The total limit leaves the quick failures plenty of headroom on slow (e.g. instrumented) CI runners
+    fake_transport() : nn_transport( { milliseconds( 1 ), milliseconds( 1000 ) } ) {}
 
     int32_t send_chunk( uint16_t, uint32_t, uint32_t, uint32_t param4, const uint8_t * data, size_t size ) override
     {
@@ -191,34 +191,54 @@ TEST_CASE( "upload sequence number" )
 }
 
 
-TEST_CASE( "commit timeouts" )
+TEST_CASE( "long commit and lost device" )
 {
     fake_transport t;
     auto const start = std::chrono::steady_clock::now();
     auto elapsed = [&] { return std::chrono::steady_clock::now() - start; };
 
-    SECTION( "no change in state or progress" )
+    SECTION( "progress stays 0 for the whole flash write" )
     {
-        t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::validating, 8, 10 ) };
-        CHECK_THAT( upload( t ), ContainsSubstring( "timed out" ) );
-        CHECK( elapsed() >= milliseconds( 50 ) );
-        CHECK( elapsed() < milliseconds( 1000 ) );
+        t.next_status = [&]
+        {
+            return t.status_reads == 1  ? make_status( nn::upload_state::idle, 7 )
+                 : t.status_reads < 30  ? make_status( nn::upload_state::writing_flash, 8 )
+                                        : make_status( nn::upload_state::done, 8, 100 );
+        };
+        CHECK( upload( t ) == "" );
+        CHECK( t.status_reads == 30 );
+    }
+    SECTION( "never completes" )
+    {
+        t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::writing_flash, 8 ) };
+        CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) );
+        CHECK( elapsed() >= milliseconds( 1000 ) );
     }
     SECTION( "device restarted: its status no longer matches the upload" )
     {
         t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::idle, 0 ) };
-        CHECK_THAT( upload( t ), ContainsSubstring( "timed out" ) );
-        CHECK( elapsed() < milliseconds( 1000 ) );
+        CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) );
+        CHECK( elapsed() >= milliseconds( 1000 ) );
     }
-    SECTION( "progress keeps changing but never completes" )
+    SECTION( "device lost while polling" )
     {
-        uint8_t progress = 0;
         t.next_status = [&]
         {
-            return t.status_reads == 1 ? make_status( nn::upload_state::idle, 7 )
-                                       : make_status( nn::upload_state::writing_flash, 8, ++progress );
+            if( t.status_reads > 2 )
+                throw io_exception( "device disconnected" );
+            return make_status( t.status_reads == 1 ? nn::upload_state::idle : nn::upload_state::writing_flash, 7 );
         };
-        CHECK_THAT( upload( t ), ContainsSubstring( "timed out" ) );
-        CHECK( elapsed() >= milliseconds( 1000 ) );
+        CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) && ContainsSubstring( "device disconnected" ) );
+        CHECK( elapsed() < milliseconds( 1000 ) );
+    }
+    SECTION( "status read refused while polling" )
+    {
+        t.next_status = [&]
+        {
+            t.status_error = -21;  // from the next read on
+            return make_status( nn::upload_state::idle, 7 );
+        };
+        CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) && ContainsSubstring( "not ready" ) );
+        CHECK( t.status_reads == 2 );
     }
 }

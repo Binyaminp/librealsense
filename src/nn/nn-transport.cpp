@@ -51,16 +51,26 @@ nn::status nn_transport::get_status()
 
 // The last chunk's reply comes before the commit, which outlasts the 1 s XU reply window: the device reports its
 // progress and result in NN_STATUS. It resets the state on chunk 0 and, if it fills upload_seq, increments it, so a
-// status still carrying the sequence number seen before the upload is this upload's too
+// status still carrying the sequence number seen before the upload is this upload's too.
+// Only a total limit: progress stays 0 for the whole flash write. If the status can't be read, the result is unknown.
 void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback & progress )
 {
     auto const start = std::chrono::steady_clock::now();
-    auto last_change = start;
-    nn::status last = {};
     while( true )
     {
-        auto status = get_status();
-        auto const now = std::chrono::steady_clock::now();
+        nn::status status;
+        std::string failure;
+        try
+        {
+            if( auto err = read_status( status ) )
+                failure = nn::error_message( err );
+        }
+        catch( std::exception const & e )
+        {
+            failure = e.what();
+        }
+        if( ! failure.empty() )
+            throw io_exception( rsutils::string::from() << nn::INCOMPLETE_MESSAGE << " (" << failure << ")" );
         if( status.upload_seq == seq_before || status.upload_seq == seq_before + 1 )
         {
             if( status.state == nn::upload_state::done )
@@ -70,11 +80,8 @@ void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback
             if( progress )
                 progress( 0.9f + 0.001f * std::min< uint8_t >( status.progress, 100 ) );
         }
-        if( status.upload_seq != last.upload_seq || status.state != last.state || status.progress != last.progress )
-            last_change = now;
-        if( now - last_change > _timing.stall_timeout || now - start > _timing.commit_timeout )
-            throw io_exception( "NN upload failed: timed out waiting for the device to store the package" );
-        last = status;
+        if( std::chrono::steady_clock::now() - start > _timing.commit_timeout )
+            throw io_exception( nn::INCOMPLETE_MESSAGE );
         std::this_thread::sleep_for( _timing.poll_interval );
     }
 }

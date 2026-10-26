@@ -22,8 +22,7 @@ constexpr uint16_t STATUS_TABLE_ID = 0x0A07;   // NN_STATUS
 constexpr uint16_t TABLE_VERSION = 0x0100;
 constexpr uint32_t STATUS_REGION = 2;  // RAM
 constexpr std::chrono::milliseconds STATUS_POLL_INTERVAL( 100 );
-constexpr std::chrono::seconds STALL_TIMEOUT( 10 );  // no change in state or progress
-constexpr std::chrono::seconds COMMIT_TIMEOUT( 60 );
+constexpr std::chrono::seconds COMMIT_TIMEOUT( 60 );  // after the last chunk; measured worst case about 14 s
 
 // param4 carries the chunk index in 16 bits, and HKR tables carry a 16-byte header in front of the payload
 constexpr size_t CHUNK_SIZE = 1000;
@@ -44,6 +43,7 @@ enum class upload_state : uint8_t
 };
 
 constexpr const char * BUSY_MESSAGE = "another upload is in progress on the device";
+constexpr const char * INCOMPLETE_MESSAGE = "NN upload did not complete. Reconnect the camera and upload the model again";
 inline bool is_busy( upload_state state ) { return state >= upload_state::receiving && state <= upload_state::activating; }
 
 // NN_STATUS, little-endian, after the HKR table header; readers ignore bytes beyond the fields they know

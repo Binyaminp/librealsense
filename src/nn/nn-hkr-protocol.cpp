@@ -62,7 +62,7 @@ std::string error_message( int32_t code )
     case -4: return "NN upload is not supported on locked cameras";
     case -5: return "invalid package, or the NN metadata does not match the weights";
     case -6: return "package CRC mismatch";
-    case -10: return "the model metadata or weights are too large for their flash slot";
+    case -10: return "the model is too large for this camera's model slot; the limit depends on the camera firmware";
     case -12: return "NN upload is not supported by this firmware";
     case -15: return "flash write failed";
     case -19: return "upload target is not supported by this firmware";

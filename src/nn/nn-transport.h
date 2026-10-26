@@ -13,7 +13,6 @@ namespace librealsense {
 struct nn_transport_timing
 {
     std::chrono::milliseconds poll_interval = nn::STATUS_POLL_INTERVAL;
-    std::chrono::milliseconds stall_timeout = nn::STALL_TIMEOUT;
     std::chrono::milliseconds commit_timeout = nn::COMMIT_TIMEOUT;
 };
 
