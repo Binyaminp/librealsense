@@ -59,7 +59,7 @@ struct status
     uint8_t progress;  // 0-100% of the commit
     uint8_t reserved;
     int32_t error;
-    uint32_t upload_seq;  // incremented by the device on every chunk 0, if it fills it
+    uint32_t upload_seq;  // incremented by the device on every chunk 0
     uint32_t bytes_received;
     uint32_t total_bytes;
     uint32_t elapsed_ms;

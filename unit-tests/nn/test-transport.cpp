@@ -167,12 +167,13 @@ TEST_CASE( "device errors" )
 
 TEST_CASE( "upload sequence number" )
 {
-    SECTION( "not filled by the device" )
+    SECTION( "a leftover result from the previous upload is ignored" )
     {
         fake_transport t;
-        t.statuses = { make_status( nn::upload_state::idle, 0 ), make_status( nn::upload_state::validating, 0 ),
-                       make_status( nn::upload_state::error, 0, 0, -6 ) };
+        t.statuses = { make_status( nn::upload_state::done, 7 ), make_status( nn::upload_state::done, 7 ),
+                       make_status( nn::upload_state::error, 8, 0, -6 ) };
         CHECK_THAT( upload( t ), ContainsSubstring( "CRC mismatch (-6)" ) );
+        CHECK( t.status_reads == 3 );
     }
     SECTION( "status of another upload is ignored" )
     {
@@ -239,7 +240,8 @@ TEST_CASE( "long commit and lost device" )
         {
             if( t.status_reads > 2 )
                 throw io_exception( "device disconnected" );
-            return make_status( t.status_reads == 1 ? nn::upload_state::idle : nn::upload_state::writing_flash, 7 );
+            return make_status( t.status_reads == 1 ? nn::upload_state::idle : nn::upload_state::writing_flash,
+                                t.status_reads == 1 ? 7 : 8 );
         };
         CHECK_THAT( upload( t ), ContainsSubstring( "no detection model" ) && ContainsSubstring( "device disconnected" ) );
         CHECK( elapsed() >= milliseconds( 1000 ) );

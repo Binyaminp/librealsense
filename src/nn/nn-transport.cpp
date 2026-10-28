@@ -50,8 +50,8 @@ nn::status nn_transport::get_status()
 
 
 // The last chunk's reply comes before the commit, which outlasts the 1 s XU reply window: the device reports its
-// progress and result in NN_STATUS. It resets the state on chunk 0 and, if it fills upload_seq, increments it, so a
-// status still carrying the sequence number seen before the upload is this upload's too.
+// progress and result in NN_STATUS. It increments upload_seq on chunk 0, so only that number is this upload's: a
+// status with the earlier one is a leftover result.
 // Only a total limit: progress moves in steps seconds apart. A read that throws is retried: the device holds commands queued
 // behind a calibration write for the whole flash write, past the HWM timeout, and that looks the same as a lost device.
 void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback & progress )
@@ -75,7 +75,7 @@ void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback
         // An error code is the device answering, not a timeout
         if( err )
             throw io_exception( rsutils::string::from() << nn::INCOMPLETE_MESSAGE << " (" << nn::error_message( err ) << ")" );
-        if( read && ( status.upload_seq == seq_before || status.upload_seq == seq_before + 1 ) )
+        if( read && status.upload_seq == seq_before + 1 )
         {
             if( status.state == nn::upload_state::done )
                 return;
