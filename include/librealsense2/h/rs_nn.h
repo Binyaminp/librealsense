@@ -52,7 +52,7 @@ void rs2_nn_upload_cpp( const rs2_device * device, const void * file, int file_s
                         int activate, rs2_update_progress_callback * callback, rs2_error ** error );
 
 /**
- * Check whether the device can accept an NN upload now (e.g. not locked, firmware support)
+ * Check whether the device supports NN model upload (product, firmware, not locked)
  * \param[in]  device       Device extendable to RS2_EXTENSION_NN_LOADER
  * \param[out] reason       If non-null, receives the reason when not supported, as a null-terminated string
  * \param[in]  reason_size  Size of the reason buffer

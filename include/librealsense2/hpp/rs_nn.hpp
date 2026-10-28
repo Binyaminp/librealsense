@@ -59,7 +59,16 @@ namespace rs2
         }
 
         /**
-         * Whether the device can accept an upload now (e.g. firmware support, not locked)
+         * Same as above, with the default target, slot and activate
+         */
+        template< class T >
+        void nn_upload( const std::vector< uint8_t > & file, T callback ) const
+        {
+            nn_upload( file, RS2_NN_TARGET_FLASH, 0, true, std::move( callback ) );
+        }
+
+        /**
+         * Whether the device supports NN model upload (product, firmware, not locked)
          * \param[out] reason  If non-null, receives why not
          */
         bool is_upload_supported( std::string * reason = nullptr ) const

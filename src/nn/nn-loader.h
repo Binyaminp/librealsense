@@ -23,7 +23,7 @@ public:
     virtual void nn_upload( const uint8_t * file, size_t size, rs2_nn_target target, int slot, bool activate,
                             rs2_update_progress_callback_sptr callback ) = 0;
 
-    // Whether an upload can be done now; otherwise fills the reason
+    // Whether the device supports an upload (product, firmware, not locked); otherwise fills the reason
     virtual bool is_upload_supported( std::string & reason ) = 0;
 };
 

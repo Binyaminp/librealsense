@@ -63,6 +63,6 @@ void init_nn( py::module & m )
                   bool supported = self.is_upload_supported( &reason );
                   return std::make_tuple( supported, reason );
               },
-              "Whether the device can accept an upload now. Returns (supported, reason).",
+              "Whether the device supports NN model upload (product, firmware, not locked). Returns (supported, reason).",
               py::call_guard< py::gil_scoped_release >() );
 }

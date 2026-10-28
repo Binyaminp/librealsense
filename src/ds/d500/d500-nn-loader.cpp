@@ -111,31 +111,29 @@ namespace librealsense
         d500_device::enter_update_state();
     }
 
+    // Static reasons only: an upload in progress or a streaming sensor is refused by nn_upload itself
     bool d500_nn_loader::is_upload_supported( std::string & reason )
     {
-        // Never waits for an upload in progress: apps call this to enable or disable their upload control
-        std::unique_lock< std::mutex > lock( _nn_upload_mutex, std::try_to_lock );
-        int32_t err = ds::d500_hwmon_response::SUCCESS;
-        nn::status status;
         reason = unsupported_reason();
         if( ! reason.empty() )
             return false;
-        if( ! lock.owns_lock() )
-            reason = nn::BUSY_MESSAGE;
-        else if( is_locked_now() )
-            reason = locked_reason();
-        else
+        try
         {
+            nn::status status;
+            if( is_locked_now() )
+                reason = locked_reason();
             // Confirms on first use that the FW has the NN tables: -1 / -12 / -19 if not
-            err = nn_transport_hwm( _hw_monitor ).read_status( status );
-            if( err == ds::d500_hwmon_response::SUCCESS && nn::is_busy( status.state ) )
-                reason = nn::BUSY_MESSAGE;
+            else if( auto const err = nn_transport_hwm( _hw_monitor ).read_status( status ) )
+                reason = err == ds::d500_hwmon_response::INVALID_COMMAND
+                              || err == ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID
+                              || err == ds::d500_hwmon_response::COMMAND_NOT_SUPPORTED
+                           ? firmware_reason()
+                           : nn::error_message( err );
         }
-        if( err == ds::d500_hwmon_response::INVALID_COMMAND || err == ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID
-            || err == ds::d500_hwmon_response::COMMAND_NOT_SUPPORTED )
-            reason = firmware_reason();
-        else if( err != ds::d500_hwmon_response::SUCCESS )
-            reason = nn::error_message( err );
+        catch( std::exception const & e )
+        {
+            reason = e.what();
+        }
         return reason.empty();
     }
 }
