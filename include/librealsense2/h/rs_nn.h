@@ -29,8 +29,9 @@ const char * rs2_nn_target_to_string( rs2_nn_target target );
  * Upload an NN model package from the Perception Service to the device.
  * The Perception sensor must not be streaming. When the install is done the SDK resets the camera: the device
  * disconnects and must be opened again, as after a firmware update. Firmware update on the device is refused while it
- * installs a model, uploaded by any process. Currently only RS2_NN_TARGET_FLASH, slot 0 and activate != 0 are
- * supported.
+ * installs a model, uploaded by any process. If the upload does not complete, wait a minute before resetting or
+ * reconnecting the camera: it may still be writing the model. Currently only RS2_NN_TARGET_FLASH, slot 0 and
+ * activate != 0 are supported.
  * \param[in]  device       Device extendable to RS2_EXTENSION_NN_LOADER
  * \param[in]  file         Package content, sent as is
  * \param[in]  file_size    Package size in bytes

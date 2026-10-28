@@ -39,7 +39,8 @@ void init_nn( py::module & m )
               "Upload an NN model package (bytes), sent to the device as is. Stop the Perception sensor first. When the "
               "install is done the SDK resets the camera: the device disconnects and must be opened again, as after a "
               "firmware update. Firmware update is refused while the device installs a model, uploaded by any "
-              "process. Currently only "
+              "process. If the upload does not complete, wait a minute before resetting or reconnecting the camera: it "
+              "may still be writing the model. Currently only "
               "target=flash, slot=0 and activate=True are supported. The callback receives the progress in [0, 1].",
               "data"_a, "target"_a = RS2_NN_TARGET_FLASH, "slot"_a = 0, "activate"_a = true, "callback"_a = nullptr )
         .def( "nn_upload",
