@@ -59,16 +59,21 @@ std::string error_message( int32_t code )
     case -1: return "the NN tables are not supported by this firmware";
     case -2: return "invalid upload parameter";
     case -3: return "a model in the device file system overrides the flash slot; remove it before uploading";
-    case -4: return "NN upload is not supported on locked cameras";
-    case -5: return "invalid package, or the NN metadata does not match the weights";
+    case -4:
+    case -34:
+        return "NN model upload is not available on this camera because it is locked. In this release, models can only be "
+               "uploaded to unlocked cameras";
+    case -5: return "the model file is not valid for this camera";
     case -6: return "package CRC mismatch";
     case -10: return "the model is too large for this camera's model slot; the limit depends on the camera firmware";
     case -12: return "NN upload is not supported by this firmware";
-    case -15: return "flash write failed";
-    case -19: return "upload target is not supported by this firmware";
+    case -15:
+        return "writing the model to the camera failed. The camera has no detection model until an upload succeeds; "
+               "upload again";
+    case -19: return "NN model upload with these options is not supported by this camera's firmware";
     case -20: return "incomplete transfer";
-    case -21: return "device is not ready";
-    case -41: return "device command timed out";
+    case -21: return "the camera could not allocate resources for the upload; reset the camera and try again";
+    case -41: return "the camera is busy: stop the Perception sensor and any other upload, then try again";
     default: return rsutils::string::from() << "device error " << code;
     }
 }
@@ -77,7 +82,7 @@ std::string error_message( int32_t code )
 void throw_error( int32_t code )
 {
     std::string msg = rsutils::string::from() << "NN upload failed: " << error_message( code ) << " (" << code << ")";
-    if( code == -1 || code == -4 || code == -12 || code == -19 )
+    if( code == -1 || code == -4 || code == -12 || code == -19 || code == -34 )
         throw not_implemented_exception( msg );
     throw invalid_value_exception( msg );
 }

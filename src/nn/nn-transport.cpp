@@ -52,26 +52,30 @@ nn::status nn_transport::get_status()
 // The last chunk's reply comes before the commit, which outlasts the 1 s XU reply window: the device reports its
 // progress and result in NN_STATUS. It resets the state on chunk 0 and, if it fills upload_seq, increments it, so a
 // status still carrying the sequence number seen before the upload is this upload's too.
-// Only a total limit: progress stays 0 for the whole flash write. If the status can't be read, the result is unknown.
+// Only a total limit: progress moves in steps seconds apart. A read that throws is retried: HKR holds commands queued
+// behind a calibration write for the whole flash write, past the HWM timeout, and that looks the same as a lost device.
 void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback & progress )
 {
     auto const start = std::chrono::steady_clock::now();
+    std::string failure;
     while( true )
     {
         nn::status status;
-        std::string failure;
+        int32_t err = 0;
+        bool read = false;
         try
         {
-            if( auto err = read_status( status ) )
-                failure = nn::error_message( err );
+            err = read_status( status );
+            read = true;
         }
         catch( std::exception const & e )
         {
             failure = e.what();
         }
-        if( ! failure.empty() )
-            throw io_exception( rsutils::string::from() << nn::INCOMPLETE_MESSAGE << " (" << failure << ")" );
-        if( status.upload_seq == seq_before || status.upload_seq == seq_before + 1 )
+        // An error code is the device answering, not a timeout
+        if( err )
+            throw io_exception( rsutils::string::from() << nn::INCOMPLETE_MESSAGE << " (" << nn::error_message( err ) << ")" );
+        if( read && ( status.upload_seq == seq_before || status.upload_seq == seq_before + 1 ) )
         {
             if( status.state == nn::upload_state::done )
                 return;
@@ -81,7 +85,7 @@ void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback
                 progress( 0.9f + 0.001f * std::min< uint8_t >( status.progress, 100 ) );
         }
         if( std::chrono::steady_clock::now() - start > _timing.commit_timeout )
-            throw io_exception( nn::INCOMPLETE_MESSAGE );
+            throw io_exception( failure.empty() ? nn::INCOMPLETE_MESSAGE : nn::INCOMPLETE_MESSAGE + ( " (" + failure + ")" ) );
         std::this_thread::sleep_for( _timing.poll_interval );
     }
 }

@@ -43,7 +43,9 @@ enum class upload_state : uint8_t
 };
 
 constexpr const char * BUSY_MESSAGE = "another upload is in progress on the device";
-constexpr const char * INCOMPLETE_MESSAGE = "NN upload did not complete. Reconnect the camera and upload the model again";
+constexpr const char * INCOMPLETE_MESSAGE = "NN upload did not complete. The camera has no detection model until an upload "
+                                            "succeeds. Reconnect the camera and upload the model again";
+constexpr const char * INSTALLING_MESSAGE = "NN model install in progress";
 inline bool is_busy( upload_state state ) { return state >= upload_state::receiving && state <= upload_state::activating; }
 
 // NN_STATUS, little-endian, after the HKR table header; readers ignore bytes beyond the fields they know

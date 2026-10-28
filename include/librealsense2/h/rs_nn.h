@@ -27,8 +27,10 @@ const char * rs2_nn_target_to_string( rs2_nn_target target );
 
 /**
  * Upload an NN model package (.hkrp file from the Perception Service) to the device.
- * The Perception sensor must not be streaming. The device must be rebooted (rs2_hardware_reset) for the new model
- * to take effect. Currently only RS2_NN_TARGET_FLASH, slot 0 and activate != 0 are supported.
+ * The Perception sensor must not be streaming. When the install is done the SDK resets the camera: the device
+ * disconnects and must be opened again, as after a firmware update. Firmware update on the device is refused while it
+ * installs a model, uploaded by any process. Currently only RS2_NN_TARGET_FLASH, slot 0 and activate != 0 are
+ * supported.
  * \param[in]  device       Device extendable to RS2_EXTENSION_NN_LOADER
  * \param[in]  file         Package content, sent as is
  * \param[in]  file_size    Package size in bytes

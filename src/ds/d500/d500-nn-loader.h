@@ -23,11 +23,15 @@ namespace librealsense
                         rs2_update_progress_callback_sptr callback ) override;
         bool is_upload_supported( std::string & reason ) override;
 
+        // HKR refuses a FW update during an install
+        void enter_update_state() const override;
+
     private:
         // Empty if this camera's product, connection and FW support the upload; otherwise why not
         std::string unsupported_reason() const;
         std::string firmware_reason() const;
         bool is_locked_now() const;
+        std::string locked_reason() const;
 
         std::mutex _nn_upload_mutex;
     };

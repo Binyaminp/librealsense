@@ -29,8 +29,9 @@ namespace rs2
         }
 
         /**
-         * Upload an NN model package, sent to the device as is. Stop the Perception sensor first, and reboot the
-         * device (hardware_reset) afterwards for the new model to take effect.
+         * Upload an NN model package, sent to the device as is. Stop the Perception sensor first. When the install
+         * is done the SDK resets the camera: the device disconnects and must be opened again, as after a firmware
+         * update. Firmware update on the device is refused while it installs a model, uploaded by any process.
          * Currently only RS2_NN_TARGET_FLASH, slot 0 and activate = true are supported.
          */
         void nn_upload( const std::vector< uint8_t > & file,

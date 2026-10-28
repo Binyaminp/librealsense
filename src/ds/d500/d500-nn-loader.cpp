@@ -54,6 +54,13 @@ namespace librealsense
         return gvd[ds::d500_gvd_offsets::is_camera_locked_offset] != 0;
     }
 
+    std::string d500_nn_loader::locked_reason() const
+    {
+        return rsutils::string::from() << nn::error_message( ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION ) << ". ("
+                                       << get_info( RS2_CAMERA_INFO_NAME ) << ", S/N "
+                                       << get_info( RS2_CAMERA_INFO_SERIAL_NUMBER ) << ", FW " << _fw_version << ")";
+    }
+
     void d500_nn_loader::nn_upload( const uint8_t * file, size_t size, rs2_nn_target target, int slot, bool activate,
                                     rs2_update_progress_callback_sptr callback )
     {
@@ -70,13 +77,39 @@ namespace librealsense
                 throw wrong_api_call_sequence_exception( "NN upload: stop the Perception sensor before uploading" );
         }
         if( is_locked_now() )
-            nn::throw_error( ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION );
+            throw not_implemented_exception( locked_reason() );
 
-        // Slot and activate go into param3 once FW defines its layout; until then validation admits only slot 0 + activate
-        auto power = get_raw_depth_sensor()->bulk_operation();
-        nn_transport_hwm( _hw_monitor )
-            .send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), 0, nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
-                         [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
+        {
+            // Slot and activate go into param3 once FW defines its layout; until then validation admits only slot 0 + activate
+            auto power = get_raw_depth_sensor()->bulk_operation();
+            nn_transport_hwm( _hw_monitor )
+                .send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), 0,
+                             nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
+                             [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
+        }
+
+        // HKR loads the new model only at boot
+        try
+        {
+            hardware_reset();
+        }
+        catch( std::exception const & e )
+        {
+            throw io_exception( rsutils::string::from()
+                                << "NN model installed, but the camera reset failed: reset the camera to use the new model ("
+                                << e.what() << ")" );
+        }
+    }
+
+    // NN_STATUS shows an install by any process. FW without the NN tables answers an error: not installing
+    void d500_nn_loader::enter_update_state() const
+    {
+        nn::status status;
+        if( supports_nn_upload()
+            && nn_transport_hwm( _hw_monitor ).read_status( status ) == ds::d500_hwmon_response::SUCCESS
+            && nn::is_busy( status.state ) )
+            throw wrong_api_call_sequence_exception( nn::INSTALLING_MESSAGE );
+        d500_device::enter_update_state();
     }
 
     bool d500_nn_loader::is_upload_supported( std::string & reason )
@@ -91,15 +124,16 @@ namespace librealsense
         if( ! lock.owns_lock() )
             reason = nn::BUSY_MESSAGE;
         else if( is_locked_now() )
-            err = ds::d500_hwmon_response::UNAUTHORIZED_USER_ACTION;
+            reason = locked_reason();
         else
         {
-            // Confirms on first use that HKR has the NN tables: -1 / -12 if not
+            // Confirms on first use that HKR has the NN tables: -1 / -12 / -19 if not
             err = nn_transport_hwm( _hw_monitor ).read_status( status );
             if( err == ds::d500_hwmon_response::SUCCESS && nn::is_busy( status.state ) )
                 reason = nn::BUSY_MESSAGE;
         }
-        if( err == ds::d500_hwmon_response::INVALID_COMMAND || err == ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID )
+        if( err == ds::d500_hwmon_response::INVALID_COMMAND || err == ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID
+            || err == ds::d500_hwmon_response::COMMAND_NOT_SUPPORTED )
             reason = firmware_reason();
         else if( err != ds::d500_hwmon_response::SUCCESS )
             reason = nn::error_message( err );

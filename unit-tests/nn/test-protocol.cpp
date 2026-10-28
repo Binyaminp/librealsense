@@ -47,7 +47,9 @@ TEST_CASE( "table header" )
 
     auto u16 = [&]( size_t offset ) { uint16_t v; std::memcpy( &v, table.data() + offset, sizeof( v ) ); return v; };
     auto u32 = [&]( size_t offset ) { uint32_t v; std::memcpy( &v, table.data() + offset, sizeof( v ) ); return v; };
-    CHECK( u16( 0 ) == nn::TABLE_VERSION );
+    // Version 0x0100 as bytes 00 01, as FW sends it in NN_STATUS
+    CHECK( table[0] == 0x00 );
+    CHECK( table[1] == 0x01 );
     CHECK( u16( 2 ) == nn::PACKAGE_TABLE_ID );
     CHECK( u32( 4 ) == file.size() );
     CHECK( u32( 8 ) == 0 );
@@ -93,6 +95,13 @@ TEST_CASE( "error mapping" )
     CHECK_THROWS_AS( nn::throw_error( -19 ), not_implemented_exception );
     CHECK_THROWS_AS( nn::throw_error( -10 ), invalid_value_exception );
     CHECK_THAT( thrown_message( -10 ), ContainsSubstring( "too large for this camera's model slot" ) && ContainsSubstring( "(-10)" ) );
+    CHECK_THROWS_AS( nn::throw_error( -34 ), not_implemented_exception );
+    CHECK_THAT( thrown_message( -34 ), ContainsSubstring( "locked" ) );
+    CHECK_THAT( nn::error_message( -5 ), ContainsSubstring( "not valid for this camera" ) );
+    CHECK_THAT( nn::error_message( -15 ), ContainsSubstring( "no detection model" ) );
+    CHECK_THAT( nn::error_message( -19 ), ContainsSubstring( "these options" ) );
+    CHECK_THAT( nn::error_message( -21 ), ContainsSubstring( "allocate resources" ) );
+    CHECK_THAT( nn::error_message( -41 ), ContainsSubstring( "busy" ) );
     CHECK( nn::error_message( -99 ) == "device error -99" );
 }
 
@@ -125,6 +134,11 @@ TEST_CASE( "status reply" )
 
     auto status = nn::parse_status( reply );
     CHECK( status.state == nn::upload_state::writing_flash );
+    // The header version is not checked: the other byte order parses too
+    auto other_version = reply;
+    other_version[0] = 0x01;
+    other_version[1] = 0x00;
+    CHECK( nn::parse_status( other_version ).upload_seq == 9 );
     CHECK( status.progress == 40 );
     CHECK( status.upload_seq == 9 );
 
@@ -145,7 +159,9 @@ TEST_CASE( "status reply" )
         }
         return {};
     };
+    
     auto corrupt = reply;
+    // Intentionally corrupt the last byte to test error handling
     corrupt.back() ^= 1;
     CHECK_THAT( parse_error( corrupt ), ContainsSubstring( "invalid NN status" ) );
     CHECK_THAT( parse_error( nn::build_table( nn::PACKAGE_TABLE_ID, bytes, sizeof( sent ) ) ),

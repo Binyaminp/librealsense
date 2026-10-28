@@ -160,7 +160,7 @@ TEST_CASE( "device errors" )
     {
         fake_transport t;
         t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::error, 8, 40, -15 ) };
-        CHECK_THAT( upload( t ), ContainsSubstring( "flash write failed (-15)" ) );
+        CHECK_THAT( upload( t ), ContainsSubstring( "writing the model to the camera failed" ) && ContainsSubstring( "(-15)" ) );
     }
 }
 
@@ -220,6 +220,19 @@ TEST_CASE( "long commit and lost device" )
         CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) );
         CHECK( elapsed() >= milliseconds( 1000 ) );
     }
+    SECTION( "command timeouts while writing: still busy" )
+    {
+        t.next_status = [&]
+        {
+            if( t.status_reads > 2 && t.status_reads < 6 )
+                throw io_exception( "timed out" );
+            return t.status_reads == 1  ? make_status( nn::upload_state::idle, 7 )
+                 : t.status_reads < 8   ? make_status( nn::upload_state::writing_flash, 8 )
+                                        : make_status( nn::upload_state::done, 8, 100 );
+        };
+        CHECK( upload( t ) == "" );
+        CHECK( elapsed() < milliseconds( 1000 ) );
+    }
     SECTION( "device lost while polling" )
     {
         t.next_status = [&]
@@ -228,8 +241,8 @@ TEST_CASE( "long commit and lost device" )
                 throw io_exception( "device disconnected" );
             return make_status( t.status_reads == 1 ? nn::upload_state::idle : nn::upload_state::writing_flash, 7 );
         };
-        CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) && ContainsSubstring( "device disconnected" ) );
-        CHECK( elapsed() < milliseconds( 1000 ) );
+        CHECK_THAT( upload( t ), ContainsSubstring( "no detection model" ) && ContainsSubstring( "device disconnected" ) );
+        CHECK( elapsed() >= milliseconds( 1000 ) );
     }
     SECTION( "status read refused while polling" )
     {
@@ -238,7 +251,7 @@ TEST_CASE( "long commit and lost device" )
             t.status_error = -21;  // from the next read on
             return make_status( nn::upload_state::idle, 7 );
         };
-        CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) && ContainsSubstring( "not ready" ) );
+        CHECK_THAT( upload( t ), ContainsSubstring( "did not complete" ) && ContainsSubstring( "allocate resources" ) );
         CHECK( t.status_reads == 2 );
     }
 }
