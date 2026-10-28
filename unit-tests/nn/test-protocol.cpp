@@ -36,6 +36,8 @@ TEST_CASE( "chunk numbering" )
 
     CHECK( nn::target_param( RS2_NN_TARGET_FLASH ) == 1 );
     CHECK( nn::target_param( RS2_NN_TARGET_DDR ) == 2 );
+    CHECK( nn::slot_param( 0, true ) == 0x10000 );
+    CHECK( nn::slot_param( 3, false ) == 3 );
 }
 
 

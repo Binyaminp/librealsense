@@ -76,6 +76,9 @@ status parse_status( const std::vector< uint8_t > & reply );
 // param1 of a table write: 1 = flash, 2 = DDR
 inline uint32_t target_param( rs2_nn_target target ) { return target == RS2_NN_TARGET_DDR ? 2 : 1; }
 
+// param3: slot in bits 15:0, activate after store in bit 16
+inline uint32_t slot_param( int slot, bool activate ) { return static_cast< uint16_t >( slot ) | ( activate ? 1u << 16 : 0 ); }
+
 inline size_t chunk_count( size_t table_size ) { return ( table_size + CHUNK_SIZE - 1 ) / CHUNK_SIZE; }
 
 // param4 of chunk i out of n: ( n - 1 ) << 16 | i

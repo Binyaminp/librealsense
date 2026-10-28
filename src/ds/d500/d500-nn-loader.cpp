@@ -80,10 +80,9 @@ namespace librealsense
             throw not_implemented_exception( locked_reason() );
 
         {
-            // Slot and activate go into param3 once FW defines its layout; until then validation admits only slot 0 + activate
             auto power = get_raw_depth_sensor()->bulk_operation();
             nn_transport_hwm( _hw_monitor )
-                .send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), 0,
+                .send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), nn::slot_param( slot, activate ),
                              nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
                              [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
         }
