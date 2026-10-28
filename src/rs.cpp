@@ -3861,8 +3861,9 @@ void rs2_nn_upload_cpp( const rs2_device * device, const void * file, int file_s
         callback_ptr.reset( callback, []( rs2_update_progress_callback * p ) { p->release(); } );
 
     VALIDATE_NOT_NULL( device );
-    VALIDATE_NOT_NULL( file );
-    VALIDATE_GT( file_size, 0 );
+    VALIDATE_RANGE( file_size, 0, std::numeric_limits< int >::max() );  // an empty package gets the library's message
+    if( file_size )
+        VALIDATE_NOT_NULL( file );
     VALIDATE_ENUM( target );
     auto nn_loader = VALIDATE_INTERFACE( device->device, librealsense::nn_loader_interface );
     nn_loader->nn_upload( static_cast< const uint8_t * >( file ), static_cast< size_t >( file_size ), target, slot, activate != 0, callback_ptr );
@@ -3873,8 +3874,9 @@ void rs2_nn_upload( const rs2_device * device, const void * file, int file_size,
                     int activate, rs2_update_progress_callback_ptr callback, void * client_data, rs2_error ** error ) BEGIN_API_CALL
 {
     VALIDATE_NOT_NULL( device );
-    VALIDATE_NOT_NULL( file );
-    VALIDATE_GT( file_size, 0 );
+    VALIDATE_RANGE( file_size, 0, std::numeric_limits< int >::max() );  // an empty package gets the library's message
+    if( file_size )
+        VALIDATE_NOT_NULL( file );
     VALIDATE_ENUM( target );
     auto nn_loader = VALIDATE_INTERFACE( device->device, librealsense::nn_loader_interface );
     rs2_update_progress_callback_sptr cb;
