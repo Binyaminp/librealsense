@@ -4,9 +4,6 @@ Copyright(c) 2026 RealSense, Inc. All Rights Reserved. */
 #include "pyrealsense2.h"
 #include <librealsense2/hpp/rs_nn.hpp>
 
-#include <fstream>
-#include <iterator>
-
 static void nn_upload( const rs2::nn_loader & self, const std::vector< uint8_t > & file, rs2_nn_target target, int slot,
                        bool activate, std::function< void( float ) > callback )
 {
@@ -44,18 +41,18 @@ void init_nn( py::module & m )
               "target=flash, slot=0 and activate=True are supported. The callback receives the progress in [0, 1].",
               "data"_a, "target"_a = RS2_NN_TARGET_FLASH, "slot"_a = 0, "activate"_a = true, "callback"_a = nullptr )
         .def( "nn_upload",
-              []( const rs2::nn_loader & self, const std::string & path, rs2_nn_target target, int slot, bool activate,
+              []( const rs2::nn_loader & self, py::object path, rs2_nn_target target, int slot, bool activate,
                   std::function< void( float ) > callback )
               {
-                  std::ifstream f( path, std::ios::binary );
-                  if( ! f )
-                      throw std::runtime_error( "cannot open " + path );
-                  std::vector< uint8_t > file( ( std::istreambuf_iterator< char >( f ) ), std::istreambuf_iterator< char >() );
+                  // Python opens the file: any os.PathLike, and non-ASCII paths on Windows
+                  std::string data
+                      = py::module::import( "pathlib" ).attr( "Path" )( path ).attr( "read_bytes" )().cast< py::bytes >();
+                  std::vector< uint8_t > file( data.begin(), data.end() );
+                  py::gil_scoped_release release;
                   nn_upload( self, file, target, slot, activate, std::move( callback ) );
               },
-              "Upload an NN model package from a file path; see the bytes overload.",
-              "path"_a, "target"_a = RS2_NN_TARGET_FLASH, "slot"_a = 0, "activate"_a = true, "callback"_a = nullptr,
-              py::call_guard< py::gil_scoped_release >() )
+              "Upload an NN model package from a file path (str or os.PathLike); see the bytes overload.",
+              "path"_a, "target"_a = RS2_NN_TARGET_FLASH, "slot"_a = 0, "activate"_a = true, "callback"_a = nullptr )
         .def( "is_upload_supported",
               []( const rs2::nn_loader & self )
               {
