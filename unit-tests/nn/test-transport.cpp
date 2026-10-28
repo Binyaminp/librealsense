@@ -162,6 +162,16 @@ TEST_CASE( "device errors" )
         t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::error, 8, 40, -15 ) };
         CHECK_THAT( upload( t ), ContainsSubstring( "writing the model to the camera failed" ) && ContainsSubstring( "(-15)" ) );
     }
+    SECTION( "after the commit progress reached 100: never reported as complete" )
+    {
+        fake_transport t;
+        t.statuses = { make_status( nn::upload_state::idle, 7 ), make_status( nn::upload_state::activating, 8, 100 ),
+                       make_status( nn::upload_state::error, 8, 100, -5 ) };
+        std::vector< float > progress;
+        CHECK_THAT( upload( t, 2501, &progress ), ContainsSubstring( "(-5)" ) );
+        REQUIRE( ! progress.empty() );
+        CHECK( progress.back() < 1.f );
+    }
 }
 
 

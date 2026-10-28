@@ -81,8 +81,9 @@ void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback
                 return;
             if( status.state == nn::upload_state::error )
                 nn::throw_error( status.error );
+            // 1.0 only once done
             if( progress )
-                progress( 0.9f + 0.001f * std::min< uint8_t >( status.progress, 100 ) );
+                progress( 0.9f + 0.001f * std::min< uint8_t >( status.progress, 99 ) );
         }
         if( std::chrono::steady_clock::now() - start > _timing.commit_timeout )
             throw io_exception( failure.empty() ? nn::INCOMPLETE_MESSAGE : nn::INCOMPLETE_MESSAGE + ( " (" + failure + ")" ) );
