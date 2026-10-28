@@ -26,7 +26,7 @@ typedef enum rs2_nn_target
 const char * rs2_nn_target_to_string( rs2_nn_target target );
 
 /**
- * Upload an NN model package (.hkrp file from the Perception Service) to the device.
+ * Upload an NN model package from the Perception Service to the device.
  * The Perception sensor must not be streaming. When the install is done the SDK resets the camera: the device
  * disconnects and must be opened again, as after a firmware update. Firmware update on the device is refused while it
  * installs a model, uploaded by any process. Currently only RS2_NN_TARGET_FLASH, slot 0 and activate != 0 are

@@ -22,7 +22,7 @@ void init_nn( py::module & m )
     BIND_ENUM( m, rs2_nn_target, RS2_NN_TARGET_COUNT, "Where an uploaded NN model is stored." )
 
     py::class_< rs2::nn_loader, rs2::device, py_holder< rs2::nn_loader > > nn_loader( m, "nn_loader",
-        "Device that accepts NN model packages (.hkrp files from the Perception Service)" );
+        "Device that accepts NN model packages from the Perception Service" );
     nn_loader.def( py::init< rs2::device >(), "device"_a )
         .def( "nn_upload",
               []( const rs2::nn_loader & self, py::buffer data, rs2_nn_target target, int slot, bool activate,

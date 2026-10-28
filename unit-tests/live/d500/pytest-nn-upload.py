@@ -3,7 +3,7 @@
 
 # NN model upload (nn_loader): reported only on the D585 over USB, the checks done before any transfer, and the device
 # rejecting a bad package.
-# Uploads of a real model package (then detecting with it) need a valid .hkrp test package and are not covered yet.
+# Uploads of a real model package (then detecting with it) need a valid model package and are not covered yet.
 
 import pytest
 import pyrealsense2 as rs
@@ -24,7 +24,7 @@ pytestmark = [
 NN_UPLOAD_MIN_FW = rsutils.version( 7, 60, 0, 0 )   # placeholder, as in d500-nn-loader.cpp
 NN_UPLOAD_PIDS = { "0C04", "0C05", "0C06", "0C07", "0C08" }   # D585 only, as nn_upload_pids in d500-private.h
 MAX_FILE_SIZE = ( 1 << 16 ) * 1000 - 16
-GARBAGE = bytes( range( 256 ) ) * 16                 # not a package: no HKRP magic
+GARBAGE = bytes( range( 256 ) ) * 16                 # not a package: no package magic
 
 
 def is_locked( dev ):

@@ -13,7 +13,7 @@
 namespace rs2
 {
     /**
-     * \brief Device that accepts NN model packages (.hkrp files from the Perception Service)
+     * \brief Device that accepts NN model packages from the Perception Service
      */
     class nn_loader : public device
     {
