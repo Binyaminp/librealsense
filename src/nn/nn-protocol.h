@@ -13,10 +13,10 @@
 namespace librealsense {
 namespace nn {
 
-// Host-to-HKR NN package protocol over SET/GET_HKR_CONFIG_TABLE (0xA6/0xA7).
+// Host-to-device NN package protocol over SET/GET_HKR_CONFIG_TABLE (0xA6/0xA7).
 // Tables come from the virtual-table range (0x0A00-0x0AFF). The device replies to the last chunk once the package is
 // received, then validates, writes and activates it in the background; progress and result are read from NN_STATUS.
-// Values below follow the draft HKR FW interface spec and are expected to change until it is frozen.
+// Values below follow the draft FW interface spec and are expected to change until it is frozen.
 constexpr uint16_t PACKAGE_TABLE_ID = 0x0A04;  // NN_MODEL
 constexpr uint16_t STATUS_TABLE_ID = 0x0A07;   // NN_STATUS
 constexpr uint16_t TABLE_VERSION = 0x0100;
@@ -24,7 +24,7 @@ constexpr uint32_t STATUS_REGION = 2;  // RAM
 constexpr std::chrono::milliseconds STATUS_POLL_INTERVAL( 100 );
 constexpr std::chrono::seconds COMMIT_TIMEOUT( 60 );  // after the last chunk; measured worst case about 14 s
 
-// param4 carries the chunk index in 16 bits, and HKR tables carry a 16-byte header in front of the payload
+// param4 carries the chunk index in 16 bits, and tables carry a 16-byte header in front of the payload
 constexpr size_t CHUNK_SIZE = 1000;
 constexpr size_t MAX_CHUNKS = 1 << 16;
 constexpr size_t TABLE_HEADER_SIZE = 16;
@@ -48,7 +48,7 @@ constexpr const char * INCOMPLETE_MESSAGE = "NN upload did not complete. The cam
 constexpr const char * INSTALLING_MESSAGE = "NN model install in progress";
 inline bool is_busy( upload_state state ) { return state >= upload_state::receiving && state <= upload_state::activating; }
 
-// NN_STATUS, little-endian, after the HKR table header; readers ignore bytes beyond the fields they know
+// NN_STATUS, little-endian, after the table header; readers ignore bytes beyond the fields they know
 #pragma pack( push, 1 )
 struct status
 {
@@ -67,7 +67,7 @@ struct status
 #pragma pack( pop )
 static_assert( sizeof( status ) == 28, "unexpected NN_STATUS size" );
 
-// The HKR table header (with CRC-32 of the file) followed by the file, unchanged
+// The 16-byte table header (with CRC-32 of the file) followed by the file, unchanged
 std::vector< uint8_t > build_table( uint16_t table_id, const uint8_t * file, size_t size );
 
 // The status from an NN_STATUS reply: header and CRC are checked
@@ -86,7 +86,7 @@ inline uint32_t chunk_param( size_t n_chunks, size_t i ) { return static_cast< u
 
 std::string error_message( int32_t code );
 
-// Throws the library exception matching an HKR error code
+// Throws the library exception matching a device error code
 [[noreturn]] void throw_error( int32_t code );
 
 }  // namespace nn

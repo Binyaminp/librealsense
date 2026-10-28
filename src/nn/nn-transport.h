@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "nn-hkr-protocol.h"
+#include "nn-protocol.h"
 
 #include <functional>
 
@@ -16,7 +16,7 @@ struct nn_transport_timing
     std::chrono::milliseconds commit_timeout = nn::COMMIT_TIMEOUT;
 };
 
-// Moves an HKR table to the device and follows its commit in NN_STATUS. The link is implemented per channel, so others
+// Moves a table to the device and follows its commit in NN_STATUS. The link is implemented per channel, so others
 // (e.g. a bulk endpoint) can be added later.
 class nn_transport
 {

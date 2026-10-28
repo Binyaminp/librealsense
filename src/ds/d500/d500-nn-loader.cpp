@@ -87,7 +87,7 @@ namespace librealsense
                              [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
         }
 
-        // HKR loads the new model only at boot
+        // The device loads the new model only at boot
         try
         {
             hardware_reset();
@@ -126,7 +126,7 @@ namespace librealsense
             reason = locked_reason();
         else
         {
-            // Confirms on first use that HKR has the NN tables: -1 / -12 / -19 if not
+            // Confirms on first use that the FW has the NN tables: -1 / -12 / -19 if not
             err = nn_transport_hwm( _hw_monitor ).read_status( status );
             if( err == ds::d500_hwmon_response::SUCCESS && nn::is_busy( status.state ) )
                 reason = nn::BUSY_MESSAGE;

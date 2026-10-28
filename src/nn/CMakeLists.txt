@@ -3,8 +3,8 @@
 
 target_sources(${LRS_TARGET}
     PRIVATE
-        "${CMAKE_CURRENT_LIST_DIR}/nn-hkr-protocol.h"
-        "${CMAKE_CURRENT_LIST_DIR}/nn-hkr-protocol.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/nn-protocol.h"
+        "${CMAKE_CURRENT_LIST_DIR}/nn-protocol.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/nn-loader.h"
         "${CMAKE_CURRENT_LIST_DIR}/nn-loader.cpp"
         "${CMAKE_CURRENT_LIST_DIR}/nn-transport.h"

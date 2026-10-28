@@ -1,11 +1,11 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2026 RealSense, Inc. All Rights Reserved.
 
-//#cmake:add-file ../../src/nn/nn-hkr-protocol.cpp
+//#cmake:add-file ../../src/nn/nn-protocol.cpp
 //#cmake:add-file ../../src/nn/nn-loader.cpp
 
 #include "../catch.h"
-#include <src/nn/nn-hkr-protocol.h>
+#include <src/nn/nn-protocol.h>
 #include <src/nn/nn-loader.h>
 #include <src/librealsense-exception.h>
 

@@ -7,7 +7,7 @@
 
 namespace librealsense {
 
-static_assert( nn::CHUNK_SIZE == HW_MONITOR_COMMAND_SIZE, "HKR table chunks must fill an HW-monitor command" );
+static_assert( nn::CHUNK_SIZE == HW_MONITOR_COMMAND_SIZE, "table chunks must fill an HW-monitor command" );
 
 
 nn_transport_hwm::nn_transport_hwm( std::shared_ptr< hw_monitor > hwm )

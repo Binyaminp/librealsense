@@ -23,7 +23,7 @@ namespace librealsense
                         rs2_update_progress_callback_sptr callback ) override;
         bool is_upload_supported( std::string & reason ) override;
 
-        // HKR refuses a FW update during an install
+        // The device refuses a FW update during an install
         void enter_update_state() const override;
 
     private:

@@ -2,7 +2,7 @@
 // Copyright(c) 2026 RealSense, Inc. All Rights Reserved.
 
 #include "nn-loader.h"
-#include "nn-hkr-protocol.h"
+#include "nn-protocol.h"
 
 #include <src/librealsense-exception.h>
 

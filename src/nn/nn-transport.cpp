@@ -18,7 +18,7 @@ void nn_transport::send_table( uint16_t table_id, uint32_t param1, uint32_t para
 {
     size_t const n_chunks = nn::chunk_count( table.size() );
     if( ! n_chunks || n_chunks > nn::MAX_CHUNKS )
-        throw invalid_value_exception( rsutils::string::from() << "invalid HKR table size " << table.size() );
+        throw invalid_value_exception( rsutils::string::from() << "invalid NN table size " << table.size() );
 
     auto const before = get_status();
     if( nn::is_busy( before.state ) )
@@ -52,7 +52,7 @@ nn::status nn_transport::get_status()
 // The last chunk's reply comes before the commit, which outlasts the 1 s XU reply window: the device reports its
 // progress and result in NN_STATUS. It resets the state on chunk 0 and, if it fills upload_seq, increments it, so a
 // status still carrying the sequence number seen before the upload is this upload's too.
-// Only a total limit: progress moves in steps seconds apart. A read that throws is retried: HKR holds commands queued
+// Only a total limit: progress moves in steps seconds apart. A read that throws is retried: the device holds commands queued
 // behind a calibration write for the whole flash write, past the HWM timeout, and that looks the same as a lost device.
 void nn_transport::wait_for_commit( uint32_t seq_before, const progress_callback & progress )
 {

@@ -1,7 +1,7 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2026 RealSense, Inc. All Rights Reserved.
 
-#include "nn-hkr-protocol.h"
+#include "nn-protocol.h"
 
 #include <src/librealsense-exception.h>
 #include <src/ds/d500/d500-types/common.h>
@@ -14,7 +14,7 @@
 namespace librealsense {
 namespace nn {
 
-static_assert( sizeof( table_header ) == TABLE_HEADER_SIZE, "unexpected HKR table header size" );
+static_assert( sizeof( table_header ) == TABLE_HEADER_SIZE, "unexpected table header size" );
 
 
 std::vector< uint8_t > build_table( uint16_t table_id, const uint8_t * file, size_t size )

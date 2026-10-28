@@ -120,7 +120,7 @@ namespace librealsense
             D585_3C_PROTO_PID
         };
 
-        // The products HKR implements the NN upload for; others sharing the FW (D535 in the same device classes) never report it
+        // The products the FW implements the NN upload for; others sharing the FW (D535 in the same device classes) never report it
         static const std::set<std::uint16_t> nn_upload_pids = {
             D585_2C_PID,
             D585_3C_PID,

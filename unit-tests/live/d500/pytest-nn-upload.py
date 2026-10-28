@@ -139,6 +139,6 @@ def test_bad_package_rejected( unlocked_loader ):
     assert all( 0 <= p < 1 for p in progress )   # never reports completion
     assert progress == sorted( progress )
 
-    # The device is ready for the next upload. Whether the stored model survives depends on where HKR rejects the
+    # The device is ready for the next upload. Whether the stored model survives depends on where the device rejects the
     # package (before or during the commit), so detections are not checked here.
     assert unlocked_loader.is_upload_supported() == ( True, "" )
