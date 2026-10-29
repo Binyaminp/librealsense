@@ -57,7 +57,7 @@ struct status
     upload_state state;
     uint8_t slot;
     uint8_t progress;  // 0-100% of the commit
-    uint8_t reserved;
+    uint8_t model_state;  // whether the stored model would load; not used yet
     int32_t error;
     uint32_t upload_seq;  // incremented by the device on every chunk 0
     uint32_t bytes_received;

@@ -16,6 +16,13 @@ namespace librealsense
     // First FW with the NN package tables; a placeholder until FW releases the feature
     static const firmware_version NN_UPLOAD_MIN_FW( "7.60.0.0" );
 
+    // The FW answers the status read with -1 / -12 / -19 when it is built without the NN upload
+    static bool is_unsupported_firmware( int32_t err )
+    {
+        return err == ds::d500_hwmon_response::INVALID_COMMAND || err == ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID
+            || err == ds::d500_hwmon_response::COMMAND_NOT_SUPPORTED;
+    }
+
     d500_nn_loader::d500_nn_loader( std::shared_ptr< const d500_info > const & dev_info )
         : device( dev_info )
         , d500_device( dev_info )
@@ -81,10 +88,13 @@ namespace librealsense
 
         {
             auto power = get_raw_depth_sensor()->bulk_operation();
-            nn_transport_hwm( _hw_monitor )
-                .send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), nn::slot_param( slot, activate ),
-                             nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
-                             [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
+            nn_transport_hwm transport( _hw_monitor );
+            nn::status status;
+            if( is_unsupported_firmware( transport.read_status( status ) ) )
+                throw not_implemented_exception( firmware_reason() );
+            transport.send_table( nn::PACKAGE_TABLE_ID, nn::target_param( target ), nn::slot_param( slot, activate ),
+                                  nn::build_table( nn::PACKAGE_TABLE_ID, file, size ),
+                                  [&]( float progress ) { if( callback ) callback->on_update_progress( progress ); } );
         }
 
         // The device loads the new model only at boot
@@ -122,13 +132,8 @@ namespace librealsense
             nn::status status;
             if( is_locked_now() )
                 reason = locked_reason();
-            // Confirms on first use that the FW has the NN tables: -1 / -12 / -19 if not
             else if( auto const err = nn_transport_hwm( _hw_monitor ).read_status( status ) )
-                reason = err == ds::d500_hwmon_response::INVALID_COMMAND
-                              || err == ds::d500_hwmon_response::PARAMS_TABLE_ID_NOT_VALID
-                              || err == ds::d500_hwmon_response::COMMAND_NOT_SUPPORTED
-                           ? firmware_reason()
-                           : nn::error_message( err );
+                reason = is_unsupported_firmware( err ) ? firmware_reason() : nn::error_message( err );
         }
         catch( std::exception const & e )
         {

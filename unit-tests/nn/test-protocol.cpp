@@ -99,9 +99,10 @@ TEST_CASE( "error mapping" )
     CHECK_THAT( thrown_message( -10 ), ContainsSubstring( "too large for this camera's model slot" ) && ContainsSubstring( "(-10)" ) );
     CHECK_THROWS_AS( nn::throw_error( -34 ), not_implemented_exception );
     CHECK_THAT( thrown_message( -34 ), ContainsSubstring( "locked" ) );
-    CHECK_THAT( nn::error_message( -5 ), ContainsSubstring( "not valid for this camera" ) );
+    CHECK_THAT( nn::error_message( -1 ), ContainsSubstring( "invalid command" ) );
+    CHECK_THAT( nn::error_message( -5 ), ContainsSubstring( "not valid for this camera" ) && ContainsSubstring( "converted for" ) );
     CHECK_THAT( nn::error_message( -15 ), ContainsSubstring( "no detection model" ) );
-    CHECK_THAT( nn::error_message( -19 ), ContainsSubstring( "these options" ) );
+    CHECK_THAT( nn::error_message( -19 ), ContainsSubstring( "package format is not supported" ) );
     CHECK_THAT( nn::error_message( -21 ), ContainsSubstring( "allocate resources" ) );
     CHECK_THAT( nn::error_message( -41 ), ContainsSubstring( "busy" ) );
     CHECK( nn::error_message( -99 ) == "device error -99" );
@@ -130,6 +131,7 @@ TEST_CASE( "status reply" )
     sent.state = nn::upload_state::writing_flash;
     sent.progress = 40;
     sent.upload_seq = 9;
+    sent.model_state = 2;  // not used yet: any value parses
     auto const bytes = reinterpret_cast< const uint8_t * >( &sent );
     auto reply = nn::build_table( nn::STATUS_TABLE_ID, bytes, sizeof( sent ) );
     REQUIRE( reply.size() == 44 );
@@ -143,6 +145,7 @@ TEST_CASE( "status reply" )
     CHECK( nn::parse_status( other_version ).upload_seq == 9 );
     CHECK( status.progress == 40 );
     CHECK( status.upload_seq == 9 );
+    CHECK( status.model_state == 2 );
 
     // A longer status (a later version) is accepted
     std::vector< uint8_t > longer( bytes, bytes + sizeof( sent ) );

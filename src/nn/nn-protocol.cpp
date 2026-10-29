@@ -56,21 +56,23 @@ std::string error_message( int32_t code )
 {
     switch( code )
     {
-    case -1: return "the NN tables are not supported by this firmware";
+    case -1: return "invalid command";
     case -2: return "invalid upload parameter";
     case -3: return "a model in the device file system overrides the flash slot; remove it before uploading";
     case -4:
     case -34:
         return "NN model upload is not available on this camera because it is locked. In this release, models can only be "
                "uploaded to unlocked cameras";
-    case -5: return "the model file is not valid for this camera";
+    case -5:
+        return "the model file is not valid for this camera. Check that it was converted for this camera's firmware "
+               "version";
     case -6: return "package CRC mismatch";
     case -10: return "the model is too large for this camera's model slot; the limit depends on the camera firmware";
     case -12: return "NN upload is not supported by this firmware";
     case -15:
         return "writing the model to the camera failed. The camera has no detection model until an upload succeeds; "
                "upload again";
-    case -19: return "NN model upload with these options is not supported by this camera's firmware";
+    case -19: return "this model package format is not supported by this camera's firmware";
     case -20: return "incomplete transfer";
     case -21: return "the camera could not allocate resources for the upload; reset the camera and try again";
     case -41: return "the camera is busy: stop the Perception sensor and any other upload, then try again";
